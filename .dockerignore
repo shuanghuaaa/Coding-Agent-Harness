@@ -1,0 +1,9 @@
+node_modules/
+dist/
+tests/
+*.db
+*.sqlite
+.env
+.git/
+vitest.config.ts
+tsconfig.json
