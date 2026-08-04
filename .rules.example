@@ -1,0 +1,6 @@
+# Agent Rules
+# Copy this file to .rules and customize
+Use TypeScript
+Prefer arrow functions over function declarations
+No any types
+Test framework: vitest
