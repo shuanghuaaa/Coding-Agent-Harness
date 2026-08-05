@@ -5,7 +5,9 @@ import { HITLModal } from './HITLModal';
 
 export function ChatPanel() {
   const [task, setTask] = useState('');
-  const { connected, status, result, hitlRequest, sendTask, cancel, respondHITL } = useWebSocket('ws://localhost:3000');
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${window.location.host}`;
+  const { connected, status, result, hitlRequest, sendTask, cancel, respondHITL } = useWebSocket(wsUrl);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
