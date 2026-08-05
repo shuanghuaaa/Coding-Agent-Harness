@@ -1,13 +1,10 @@
 import type { Message } from './types';
+import type { ToolDefinition } from '../llm/provider';
 
 export interface ContextBuilderConfig {
   systemPrompt: string;
   configRules: string[];
   memories: string[];
-  toolDefinitions: Array<{
-    type: 'function';
-    function: { name: string; description: string; parameters: unknown };
-  }>;
 }
 
 export class ContextBuilder {
@@ -27,15 +24,8 @@ export class ContextBuilder {
     const systemMessage: Message = {
       role: 'system',
       content: systemContent,
-      tool_calls: undefined,
     };
 
-    const userMessage: Message = {
-      role: 'user',
-      content: JSON.stringify(this.config.toolDefinitions),
-      tool_calls: undefined,
-    };
-
-    return [systemMessage, userMessage, ...history];
+    return [systemMessage, ...history];
   }
 }

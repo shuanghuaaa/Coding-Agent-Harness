@@ -41,4 +41,20 @@ describe('MockLLM', () => {
     expect(llm.receivedMessages).toHaveLength(1);
     expect(llm.receivedMessages[0][0].content).toBe('test');
   });
+
+  it('reset() restarts from the first response', async () => {
+    const llm = new MockLLM([
+      { content: 'first', tool_calls: [], finish_reason: 'stop' },
+      { content: 'second', tool_calls: [], finish_reason: 'stop' },
+    ]);
+    const msgs: Message[] = [{ role: 'user', content: 'hi' }];
+
+    const r1 = await llm.chat(msgs);
+    expect(r1.content).toBe('first');
+
+    llm.reset();
+    const r2 = await llm.chat(msgs);
+    expect(r2.content).toBe('first');
+    expect(llm.receivedMessages).toHaveLength(1);
+  });
 });

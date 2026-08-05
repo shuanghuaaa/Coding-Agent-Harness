@@ -12,6 +12,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run build
+RUN npm ci --production
 
 FROM node:20-alpine
 WORKDIR /app

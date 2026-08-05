@@ -1,4 +1,4 @@
-import type { LLMProvider } from '../llm/provider';
+import type { LLMProvider, ToolDefinition } from '../llm/provider';
 import type { ToolDispatcher } from '../tools/dispatcher';
 import type { ContextBuilder } from './context-builder';
 import type { StopCondition } from './stop-condition';
@@ -14,6 +14,7 @@ export interface AgentLoopConfig {
   stopCondition: StopCondition;
   validator: FeedbackValidator;
   injector: FeedbackInjector;
+  feedbackToolNames?: string[];
 }
 
 export interface RunResult {
@@ -27,21 +28,26 @@ export class AgentLoop {
   private messages: Message[] = [];
   private feedbackHistory: Array<{ round: number; status: string }> = [];
   private cancelled = false;
+  private feedbackToolNames: string[];
 
-  constructor(private config: AgentLoopConfig) {}
+  constructor(private config: AgentLoopConfig) {
+    this.feedbackToolNames = config.feedbackToolNames ?? ['run_test'];
+  }
 
   async run(task: string): Promise<RunResult> {
     this.messages = this.config.contextBuilder.build([
       { role: 'user', content: task },
     ]);
 
+    const tools: ToolDefinition[] = this.config.dispatcher.getDefinitions();
+
     let round = 0;
-    const maxRounds = 10;
+    const maxRounds = this.config.stopCondition.getMaxRounds();
 
     while (round < maxRounds) {
       round++;
 
-      const response = await this.config.llm.chat(this.messages);
+      const response = await this.config.llm.chat(this.messages, tools);
       this.messages.push({
         role: 'assistant',
         content: response.content ?? '',
@@ -55,8 +61,23 @@ export class AgentLoop {
       );
 
       if (stopResult.stop) {
+        let status: RunResult['status'] = 'completed';
+        if (this.cancelled) {
+          status = 'cancelled';
+        } else if (stopResult.reason.startsWith('Max rounds')) {
+          status = 'max_rounds';
+        }
         return {
-          status: this.cancelled ? 'cancelled' : 'completed',
+          status,
+          rounds: round,
+          messages: this.messages,
+          feedbackHistory: this.feedbackHistory,
+        };
+      }
+
+      if (response.tool_calls.length === 0) {
+        return {
+          status: 'completed',
           rounds: round,
           messages: this.messages,
           feedbackHistory: this.feedbackHistory,
@@ -84,7 +105,7 @@ export class AgentLoop {
           content: result.content,
         });
 
-        if (toolCall.name === 'run_test') {
+        if (this.feedbackToolNames.includes(toolCall.name)) {
           const feedback = this.config.validator.validate(
             result.content,
             round,
@@ -96,6 +117,15 @@ export class AgentLoop {
           });
           this.config.injector.inject(this.messages, feedback);
         }
+      }
+
+      if (this.cancelled) {
+        return {
+          status: 'cancelled',
+          rounds: round,
+          messages: this.messages,
+          feedbackHistory: this.feedbackHistory,
+        };
       }
     }
 

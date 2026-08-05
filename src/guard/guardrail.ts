@@ -1,10 +1,8 @@
 import { dangerousPatterns } from './rules';
 
-export interface GuardResult {
-  blocked: boolean;
-  reason?: string;
-  severity?: 'high' | 'critical';
-}
+export type GuardResult =
+  | { blocked: true; reason: string; severity: 'high' | 'critical' }
+  | { blocked: false };
 
 export function guardrail(
   toolName: string,

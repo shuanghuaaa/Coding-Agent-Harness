@@ -40,4 +40,18 @@ describe('FeedbackInjector', () => {
     const message = injector.buildMessage(feedback);
     expect(message).toContain('All tests passed');
   });
+
+  it('inject pushes feedback message into the array', () => {
+    const feedback: Feedback = {
+      status: 'pass',
+      round: 1,
+      summary: 'All tests passed',
+      failures: [],
+    };
+    const messages = [{ role: 'user' as const, content: 'hi' }];
+    const before = messages.length;
+    injector.inject(messages, feedback);
+    expect(messages.length).toBe(before + 1);
+    expect(messages[messages.length - 1].role).toBe('system');
+  });
 });

@@ -8,47 +8,89 @@ import { FeedbackValidator } from '../../src/feedback/validator';
 import { FeedbackInjector } from '../../src/feedback/injector';
 import type { Tool } from '../../src/tools/base';
 
-describe('AgentLoop', () => {
-  it('completes a simple task in one round', async () => {
-    const mockLLM = new MockLLM([
-      {
-        content: 'Done.',
-        tool_calls: [],
-        finish_reason: 'stop',
-      },
-    ]);
-
-    const echoTool: Tool = {
-      name: 'echo',
-      description: 'echo',
-      parameters: { type: 'object', properties: {} },
-      execute: async (args) => ({ tool_call_id: '', content: String(args.text) }),
-    };
-
-    const dispatcher = new ToolDispatcher([echoTool]);
-    const contextBuilder = new ContextBuilder({
+function makeBasicLoop(mockLLM: MockLLM, tools: Tool[] = []) {
+  const dispatcher = new ToolDispatcher(tools);
+  return new AgentLoop({
+    llm: mockLLM,
+    dispatcher,
+    contextBuilder: new ContextBuilder({
       systemPrompt: 'You are a helpful agent.',
       configRules: [],
       memories: [],
-      toolDefinitions: dispatcher.getDefinitions(),
-    });
-    const stopCondition = new StopCondition({ maxRounds: 10 });
-    const validator = new FeedbackValidator();
-    const injector = new FeedbackInjector();
+    }),
+    stopCondition: new StopCondition({ maxRounds: 10 }),
+    validator: new FeedbackValidator(),
+    injector: new FeedbackInjector(),
+  });
+}
 
-    const loop = new AgentLoop({
-      llm: mockLLM,
-      dispatcher,
-      contextBuilder,
-      stopCondition,
-      validator,
-      injector,
-    });
+describe('AgentLoop', () => {
+  it('completes a simple task in one round', async () => {
+    const mockLLM = new MockLLM([
+      { content: 'Done.', tool_calls: [], finish_reason: 'stop' },
+    ]);
 
+    const loop = makeBasicLoop(mockLLM);
     const result = await loop.run('Say hello');
 
     expect(result.status).toBe('completed');
     expect(result.rounds).toBe(1);
     expect(result.messages.length).toBeGreaterThan(0);
+  });
+
+  it('returns max_rounds when limit reached', async () => {
+    const responses = Array.from({ length: 10 }, () => ({
+      content: null,
+      tool_calls: [{ id: '1', name: 'echo', arguments: { text: 'hi' } }],
+      finish_reason: 'tool_calls' as const,
+    }));
+    const mockLLM = new MockLLM(responses);
+
+    const echoTool: Tool = {
+      name: 'echo',
+      description: 'echo',
+      parameters: { type: 'object', properties: { text: { type: 'string' } } },
+      execute: async (args) => ({ tool_call_id: '', content: String((args as { text: string }).text) }),
+    };
+
+    const loop = makeBasicLoop(mockLLM, [echoTool]);
+    const result = await loop.run('Long task');
+
+    expect(result.status).toBe('max_rounds');
+    expect(result.rounds).toBe(10);
+  });
+
+  it('returns cancelled when cancel() is called', async () => {
+    const mockLLM = new MockLLM([
+      { content: 'Working...', tool_calls: [], finish_reason: 'stop' },
+    ]);
+
+    const loop = makeBasicLoop(mockLLM);
+    loop.cancel();
+    const result = await loop.run('Task');
+
+    expect(result.status).toBe('cancelled');
+  });
+
+  it('returns cancelled when cancel() called mid-loop', async () => {
+    const mockLLM = new MockLLM([
+      { content: null, tool_calls: [{ id: '1', name: 'echo', arguments: { text: 'hi' } }], finish_reason: 'tool_calls' },
+      { content: 'Should not reach', tool_calls: [], finish_reason: 'stop' },
+    ]);
+
+    const echoTool: Tool = {
+      name: 'echo',
+      description: 'echo',
+      parameters: { type: 'object', properties: { text: { type: 'string' } } },
+      execute: async (args) => {
+        loop.cancel();
+        return { tool_call_id: '', content: String((args as { text: string }).text) };
+      },
+    };
+
+    const loop = makeBasicLoop(mockLLM, [echoTool]);
+    const result = await loop.run('Task');
+
+    expect(result.status).toBe('cancelled');
   });
 });

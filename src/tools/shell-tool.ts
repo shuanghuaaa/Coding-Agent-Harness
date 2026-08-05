@@ -1,5 +1,8 @@
 import type { Tool } from './base';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 export const shellTool: Tool = {
   name: 'shell',
@@ -14,8 +17,7 @@ export const shellTool: Tool = {
   execute: async (args) => {
     const { command } = args as { command: string };
     try {
-      const stdout = execSync(command, {
-        encoding: 'utf-8',
+      const { stdout } = await execAsync(command, {
         timeout: 30000,
         maxBuffer: 10 * 1024 * 1024,
       });

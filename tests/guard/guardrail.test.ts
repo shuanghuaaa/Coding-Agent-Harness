@@ -5,7 +5,9 @@ describe('guardrail', () => {
   it('blocks rm -rf', () => {
     const result = guardrail('shell', { command: 'rm -rf /' });
     expect(result.blocked).toBe(true);
-    expect(result.reason).toContain('rm_rf');
+    if (result.blocked) {
+      expect(result.reason).toContain('rm_rf');
+    }
   });
 
   it('blocks git push --force', () => {

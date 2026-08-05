@@ -1,7 +1,10 @@
 import type { Tool } from './base';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
+
+const execAsync = promisify(exec);
 
 export const searchTool: Tool = {
   name: 'search',
@@ -17,13 +20,11 @@ export const searchTool: Tool = {
   execute: async (args) => {
     const { pattern, path: searchPath = '.' } = args as { pattern: string; path?: string };
     try {
-      const stdout = execSync(`rg "${pattern}" "${searchPath}" --no-heading -n`, {
-        encoding: 'utf-8',
+      const { stdout } = await execAsync(`rg "${pattern}" "${searchPath}" --no-heading -n`, {
         timeout: 10000,
       });
       return { tool_call_id: '', content: stdout };
     } catch (_rgError: unknown) {
-      // Fallback: ripgrep not available, use Node.js native search
       try {
         const results = searchInDirectory(searchPath, pattern);
         return { tool_call_id: '', content: results.join('\n') };
@@ -69,7 +70,7 @@ export const gitDiffTool: Tool = {
   },
   execute: async () => {
     try {
-      const stdout = execSync('git diff', { encoding: 'utf-8', timeout: 10000 });
+      const { stdout } = await execAsync('git diff', { timeout: 10000 });
       return { tool_call_id: '', content: stdout || '(no changes)' };
     } catch (error: unknown) {
       const err = error as { message: string };
@@ -91,8 +92,7 @@ export const runTestTool: Tool = {
   execute: async (args) => {
     const { command } = args as { command: string };
     try {
-      const stdout = execSync(command, {
-        encoding: 'utf-8',
+      const { stdout } = await execAsync(command, {
         timeout: 60000,
         maxBuffer: 10 * 1024 * 1024,
       });

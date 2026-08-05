@@ -4,11 +4,11 @@ import type { Message } from '../agent/types';
 export class FeedbackInjector {
   buildMessage(feedback: Feedback): string {
     if (feedback.status === 'pass') {
-      return `✅ ${feedback.summary}`;
+      return `[PASS] ${feedback.summary}`;
     }
 
     const lines = [
-      `❌ ${feedback.summary} (Round ${feedback.round}):`,
+      `[FAIL] ${feedback.summary} (Round ${feedback.round}):`,
       '',
       ...feedback.failures.map(
         (f) =>
@@ -21,15 +21,11 @@ export class FeedbackInjector {
     return lines.join('\n');
   }
 
-  inject(
-    messages: Message[],
-    feedback: Feedback
-  ): Message[] {
+  inject(messages: Message[], feedback: Feedback): void {
     const content = this.buildMessage(feedback);
     messages.push({
       role: 'system',
       content,
     });
-    return messages;
   }
 }

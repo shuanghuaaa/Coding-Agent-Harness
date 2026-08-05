@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { AgentLog } from './AgentLog';
 
@@ -6,7 +6,7 @@ export function ChatPanel() {
   const [task, setTask] = useState('');
   const { connected, status, result, sendTask, cancel } = useWebSocket('ws://localhost:3000');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (task.trim()) {
       sendTask(task.trim());

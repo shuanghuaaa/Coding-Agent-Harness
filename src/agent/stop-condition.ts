@@ -5,9 +5,13 @@ export interface StopConditionConfig {
 export class StopCondition {
   constructor(private config: StopConditionConfig) {}
 
+  getMaxRounds(): number {
+    return this.config.maxRounds;
+  }
+
   shouldStop(
     currentRound: number,
-    finishReason: string,
+    finishReason: 'stop' | 'tool_calls' | 'length',
     userCancelled?: boolean
   ): { stop: boolean; reason: string } {
     if (userCancelled) {

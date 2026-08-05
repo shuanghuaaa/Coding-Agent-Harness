@@ -1,5 +1,21 @@
 import type { Tool } from './base';
 import * as fs from 'fs';
+import * as path from 'path';
+
+let workspaceRoot = process.cwd();
+
+export function setWorkspaceRoot(root: string): void {
+  workspaceRoot = root;
+}
+
+function resolvePath(inputPath: string): string {
+  const resolved = path.resolve(workspaceRoot, inputPath);
+  const relative = path.relative(path.resolve(workspaceRoot), resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`Path traversal blocked: ${inputPath}`);
+  }
+  return resolved;
+}
 
 export const readFileTool: Tool = {
   name: 'read_file',
@@ -12,9 +28,10 @@ export const readFileTool: Tool = {
     required: ['path'],
   },
   execute: async (args) => {
-    const { path: filePath } = args as { path: string };
+    const raw = (args as { path: string }).path;
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
+      const safePath = resolvePath(raw);
+      const content = fs.readFileSync(safePath, 'utf-8');
       return { tool_call_id: '', content };
     } catch (error: unknown) {
       const err = error as NodeJS.ErrnoException;
@@ -35,12 +52,14 @@ export const writeFileTool: Tool = {
     required: ['path', 'content'],
   },
   execute: async (args) => {
-    const { path: filePath, content } = args as { path: string; content: string };
+    const { content } = args as { path: string; content: string };
+    const raw = (args as { path: string }).path;
     try {
-      const dir = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '';
-      if (dir) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(filePath, content, 'utf-8');
-      return { tool_call_id: '', content: `File written: ${filePath}` };
+      const safePath = resolvePath(raw);
+      const dir = path.dirname(safePath);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(safePath, content, 'utf-8');
+      return { tool_call_id: '', content: `File written: ${safePath}` };
     } catch (error: unknown) {
       const err = error as NodeJS.ErrnoException;
       return { tool_call_id: '', content: '', error: `Failed to write file: ${err.message}` };
@@ -59,10 +78,11 @@ export const deleteFileTool: Tool = {
     required: ['path'],
   },
   execute: async (args) => {
-    const { path: filePath } = args as { path: string };
+    const raw = (args as { path: string }).path;
     try {
-      fs.unlinkSync(filePath);
-      return { tool_call_id: '', content: `File deleted: ${filePath}` };
+      const safePath = resolvePath(raw);
+      fs.unlinkSync(safePath);
+      return { tool_call_id: '', content: `File deleted: ${safePath}` };
     } catch (error: unknown) {
       const err = error as NodeJS.ErrnoException;
       return { tool_call_id: '', content: '', error: `Failed to delete file: ${err.message}` };

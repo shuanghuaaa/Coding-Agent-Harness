@@ -8,7 +8,9 @@ export function useWebSocket(url: string) {
   const [status, setStatus] = useState<string>('idle');
 
   useEffect(() => {
-    const ws = new WebSocket(url);
+    const token = new URLSearchParams(window.location.search).get('token') || '';
+    const wsUrl = token ? `${url}?token=${encodeURIComponent(token)}` : url;
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => setConnected(true);
