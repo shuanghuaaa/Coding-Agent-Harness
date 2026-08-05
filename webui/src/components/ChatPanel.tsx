@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { AgentLog } from './AgentLog';
+import { HITLModal } from './HITLModal';
 
 export function ChatPanel() {
   const [task, setTask] = useState('');
-  const { connected, status, result, sendTask, cancel } = useWebSocket('ws://localhost:3000');
+  const { connected, status, result, hitlRequest, sendTask, cancel, respondHITL } = useWebSocket('ws://localhost:3000');
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -15,9 +16,18 @@ export function ChatPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: '20px', fontFamily: 'system-ui, sans-serif' }}>
+      {hitlRequest && (
+        <HITLModal
+          request={hitlRequest}
+          onApprove={(modifiedArgs) => respondHITL(true, modifiedArgs)}
+          onReject={() => respondHITL(false)}
+        />
+      )}
+
       <div style={{ flex: 1, overflow: 'auto', marginBottom: '20px' }}>
         <div style={{ marginBottom: '10px', fontSize: '14px' }}>
-          Status: {connected ? '🟢 Connected' : '🔴 Disconnected'} | Agent: {status}
+          Status: {connected ? 'Connected' : 'Disconnected'} | Agent: {status}
+          {hitlRequest && <span style={{ color: '#f39c12', fontWeight: 600 }}> | Awaiting approval...</span>}
         </div>
         {result && <AgentLog result={result} />}
       </div>

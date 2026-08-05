@@ -7,6 +7,22 @@ import type { FeedbackInjector } from '../feedback/injector';
 import { guardrail } from '../guard/guardrail';
 import type { Message } from './types';
 
+export interface HITLRequest {
+  toolCallId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+  reason: string;
+  severity: 'high' | 'critical';
+}
+
+export interface HITLResponse {
+  toolCallId: string;
+  approved: boolean;
+  modifiedArgs?: Record<string, unknown>;
+}
+
+export type HITLCallback = (request: HITLRequest) => Promise<HITLResponse>;
+
 export interface AgentLoopConfig {
   llm: LLMProvider;
   dispatcher: ToolDispatcher;
@@ -15,6 +31,7 @@ export interface AgentLoopConfig {
   validator: FeedbackValidator;
   injector: FeedbackInjector;
   feedbackToolNames?: string[];
+  hitlCallback?: HITLCallback;
 }
 
 export interface RunResult {
@@ -30,7 +47,11 @@ export class AgentLoop {
   private cancelled = false;
   private feedbackToolNames: string[];
 
-  constructor(private config: AgentLoopConfig) {
+  /** Exposed for HITL-aware server to rebuild with a hitlCallback */
+  public readonly config: AgentLoopConfig;
+
+  constructor(config: AgentLoopConfig) {
+    this.config = config;
     this.feedbackToolNames = config.feedbackToolNames ?? ['run_test'];
   }
 
@@ -61,18 +82,7 @@ export class AgentLoop {
       );
 
       if (stopResult.stop) {
-        let status: RunResult['status'] = 'completed';
-        if (this.cancelled) {
-          status = 'cancelled';
-        } else if (stopResult.reason.startsWith('Max rounds')) {
-          status = 'max_rounds';
-        }
-        return {
-          status,
-          rounds: round,
-          messages: this.messages,
-          feedbackHistory: this.feedbackHistory,
-        };
+        return this.buildResult(stopResult.reason, round);
       }
 
       if (response.tool_calls.length === 0) {
@@ -86,37 +96,38 @@ export class AgentLoop {
 
       for (const toolCall of response.tool_calls) {
         const guardResult = guardrail(toolCall.name, toolCall.arguments);
+
         if (guardResult.blocked) {
-          this.messages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: `BLOCKED: ${guardResult.reason}`,
-          });
+          if (this.config.hitlCallback) {
+            const hitlResponse = await this.config.hitlCallback({
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              arguments: toolCall.arguments,
+              reason: guardResult.reason,
+              severity: guardResult.severity,
+            });
+
+            if (hitlResponse.approved) {
+              const args = hitlResponse.modifiedArgs ?? toolCall.arguments;
+              await this.executeToolCall(toolCall.id, toolCall.name, args, round);
+            } else {
+              this.messages.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: `BLOCKED (user rejected): ${guardResult.reason}`,
+              });
+            }
+          } else {
+            this.messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: `BLOCKED: ${guardResult.reason}`,
+            });
+          }
           continue;
         }
 
-        const result = await this.config.dispatcher.dispatch(
-          toolCall.name,
-          toolCall.arguments
-        );
-        this.messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: result.content,
-        });
-
-        if (this.feedbackToolNames.includes(toolCall.name)) {
-          const feedback = this.config.validator.validate(
-            result.content,
-            round,
-            result.error
-          );
-          this.feedbackHistory.push({
-            round,
-            status: feedback.status,
-          });
-          this.config.injector.inject(this.messages, feedback);
-        }
+        await this.executeToolCall(toolCall.id, toolCall.name, toolCall.arguments, round);
       }
 
       if (this.cancelled) {
@@ -131,6 +142,48 @@ export class AgentLoop {
 
     return {
       status: 'max_rounds',
+      rounds: round,
+      messages: this.messages,
+      feedbackHistory: this.feedbackHistory,
+    };
+  }
+
+  private async executeToolCall(
+    callId: string,
+    name: string,
+    args: Record<string, unknown>,
+    round: number,
+  ): Promise<void> {
+    const result = await this.config.dispatcher.dispatch(name, args);
+    this.messages.push({
+      role: 'tool',
+      tool_call_id: callId,
+      content: result.content,
+    });
+
+    if (this.feedbackToolNames.includes(name)) {
+      const feedback = this.config.validator.validate(
+        result.content,
+        round,
+        result.error
+      );
+      this.feedbackHistory.push({
+        round,
+        status: feedback.status,
+      });
+      this.config.injector.inject(this.messages, feedback);
+    }
+  }
+
+  private buildResult(reason: string, round: number): RunResult {
+    let status: RunResult['status'] = 'completed';
+    if (this.cancelled) {
+      status = 'cancelled';
+    } else if (reason.startsWith('Max rounds')) {
+      status = 'max_rounds';
+    }
+    return {
+      status,
       rounds: round,
       messages: this.messages,
       feedbackHistory: this.feedbackHistory,

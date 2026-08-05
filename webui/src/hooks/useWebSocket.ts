@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { WSMessage, AgentResult } from '../types';
+import type { WSMessage, AgentResult, HITLRequestPayload } from '../types';
 
 export function useWebSocket(url: string) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [result, setResult] = useState<AgentResult | null>(null);
   const [status, setStatus] = useState<string>('idle');
+  const [hitlRequest, setHitlRequest] = useState<HITLRequestPayload | null>(null);
 
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get('token') || '';
@@ -21,6 +22,8 @@ export function useWebSocket(url: string) {
         setStatus((msg.payload as { status: string }).status);
       } else if (msg.type === 'result') {
         setResult(msg.payload as AgentResult);
+      } else if (msg.type === 'hitl_request') {
+        setHitlRequest(msg.payload as HITLRequestPayload);
       }
     };
 
@@ -31,11 +34,21 @@ export function useWebSocket(url: string) {
     wsRef.current?.send(JSON.stringify({ type: 'task', payload: { task } }));
     setStatus('running');
     setResult(null);
+    setHitlRequest(null);
   }, []);
 
   const cancel = useCallback(() => {
     wsRef.current?.send(JSON.stringify({ type: 'cancel' }));
   }, []);
 
-  return { connected, status, result, sendTask, cancel };
+  const respondHITL = useCallback((approved: boolean, modifiedArgs?: Record<string, unknown>) => {
+    if (!hitlRequest) return;
+    wsRef.current?.send(JSON.stringify({
+      type: 'hitl_response',
+      payload: { toolCallId: hitlRequest.toolCallId, approved, modifiedArgs },
+    }));
+    setHitlRequest(null);
+  }, [hitlRequest]);
+
+  return { connected, status, result, hitlRequest, sendTask, cancel, respondHITL };
 }

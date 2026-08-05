@@ -1,5 +1,5 @@
 export interface WSMessage {
-  type: 'task' | 'cancel' | 'hitl_response' | 'status' | 'result' | 'log';
+  type: 'task' | 'cancel' | 'hitl_response' | 'hitl_request' | 'status' | 'result' | 'log';
   payload: unknown;
 }
 
