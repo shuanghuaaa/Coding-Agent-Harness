@@ -1,8 +1,7 @@
 FROM node:20-alpine AS webui-builder
 WORKDIR /app/webui
-COPY webui/package.json webui/package-lock.json ./
-RUN npm ci
 COPY webui/ ./
+RUN npm ci
 RUN npm run build
 
 FROM node:20-alpine AS backend-builder
