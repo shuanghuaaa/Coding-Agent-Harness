@@ -1,0 +1,10 @@
+image: node:20
+
+stages:
+  - test
+
+unit-test:
+  stage: test
+  script:
+    - npm ci
+    - npm test
