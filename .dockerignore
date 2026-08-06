@@ -6,4 +6,3 @@ tests/
 .env
 .git/
 vitest.config.ts
-tsconfig.json

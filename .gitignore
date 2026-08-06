@@ -3,5 +3,5 @@ dist/
 *.db
 *.sqlite
 .env
-credentials/
+/credentials/
 .DS_Store
