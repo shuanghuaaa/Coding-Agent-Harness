@@ -2,7 +2,8 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { AgentLoop, HITLRequest, HITLResponse } from '../agent/loop';
+import { AgentLoop } from '../agent/loop';
+import type { HITLRequest, HITLResponse } from '../agent/loop';
 import type { WSMessage } from './types';
 import { logger } from '../utils/logger';
 
