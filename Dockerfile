@@ -19,9 +19,11 @@ RUN npm ci --production
 FROM node:20-alpine
 RUN apk add --no-cache sqlite-libs
 WORKDIR /app
+RUN mkdir -p /app/data
 COPY --from=backend-builder /app/dist ./dist
 COPY --from=backend-builder /app/node_modules ./node_modules
 COPY --from=webui-builder /app/webui/dist ./webui/dist
 COPY package.json ./
+VOLUME ["/app/data"]
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
