@@ -1,0 +1,1 @@
+fix: merge tsconfig.json COPY with package.json in Dockerfile to fix cache key mismatch on Zeabur

@@ -9,9 +9,8 @@ RUN npm run build
 FROM node:20-alpine AS backend-builder
 RUN apk add --no-cache python3 make g++ git sqlite-dev
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci
-COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run build
 RUN npm ci --production
