@@ -67,8 +67,8 @@ export class HarnessServer {
       });
     });
 
-    this.server.listen(port, () => {
-      logger.info(`Harness server running on port ${port}`);
+    this.server.listen(port, '0.0.0.0', () => {
+      logger.info(`Harness server running on 0.0.0.0:${port}`);
     });
   }
 

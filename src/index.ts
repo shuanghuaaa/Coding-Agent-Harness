@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { AgentLoop } from './agent/loop';
 import { ContextBuilder } from './agent/context-builder';
 import { StopCondition } from './agent/stop-condition';
@@ -15,31 +16,6 @@ import type { LLMProvider } from './llm/provider';
 import type { CredentialStore } from './credentials/store';
 import { HarnessServer } from './server/http-server';
 import { logger } from './utils/logger';
-
-const workspaceRoot = process.env.HARNESS_WORKSPACE || process.cwd();
-setWorkspaceRoot(workspaceRoot);
-logger.info('Workspace root set', { path: workspaceRoot });
-
-const configLoader = new ConfigLoader();
-const rules = configLoader.load('.rules');
-logger.info('Config loaded', { ruleCount: rules.length });
-
-const memoryStore = new MemoryStore('data/memory.db');
-const memories = memoryStore.list().map((m) => `${m.key}: ${m.value}`);
-logger.info('Memory store initialized', { entryCount: memories.length });
-
-const tools = [readFileTool, writeFileTool, deleteFileTool, shellTool, searchTool, gitDiffTool, runTestTool];
-const dispatcher = new ToolDispatcher(tools);
-
-const contextBuilder = new ContextBuilder({
-  systemPrompt: 'You are a coding agent. You can read, write, delete files, run shell commands, search code, check git diff, and run tests.',
-  configRules: rules,
-  memories,
-});
-
-const stopCondition = new StopCondition({ maxRounds: 10 });
-const validator = new FeedbackValidator();
-const injector = new FeedbackInjector();
 
 async function createCredentialStore(): Promise<CredentialStore> {
   if (process.platform === 'win32') {
@@ -77,6 +53,33 @@ async function createLLMProvider(credentialStore?: CredentialStore): Promise<LLM
 }
 
 async function main(): Promise<void> {
+  const workspaceRoot = process.env.HARNESS_WORKSPACE || process.cwd();
+  setWorkspaceRoot(workspaceRoot);
+  logger.info('Workspace root set', { path: workspaceRoot });
+
+  mkdirSync('data', { recursive: true });
+
+  const configLoader = new ConfigLoader();
+  const rules = configLoader.load('.rules');
+  logger.info('Config loaded', { ruleCount: rules.length });
+
+  const memoryStore = new MemoryStore('data/memory.db');
+  const memories = memoryStore.list().map((m) => `${m.key}: ${m.value}`);
+  logger.info('Memory store initialized', { entryCount: memories.length });
+
+  const tools = [readFileTool, writeFileTool, deleteFileTool, shellTool, searchTool, gitDiffTool, runTestTool];
+  const dispatcher = new ToolDispatcher(tools);
+
+  const contextBuilder = new ContextBuilder({
+    systemPrompt: 'You are a coding agent. You can read, write, delete files, run shell commands, search code, check git diff, and run tests.',
+    configRules: rules,
+    memories,
+  });
+
+  const stopCondition = new StopCondition({ maxRounds: 10 });
+  const validator = new FeedbackValidator();
+  const injector = new FeedbackInjector();
+
   const credentialStore = process.env.LLM_PROVIDER ? await createCredentialStore() : undefined;
   const llm = await createLLMProvider(credentialStore);
 
@@ -90,6 +93,9 @@ async function main(): Promise<void> {
   });
 
   const port = parseInt(process.env.PORT || '3000', 10);
+  if (Number.isNaN(port)) {
+    throw new Error(`Invalid PORT value: ${process.env.PORT}`);
+  }
   new HarnessServer(loop, port);
 
   process.on('SIGTERM', () => {

@@ -13,10 +13,11 @@ COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci
 COPY src/ ./src/
 RUN npm run build
-RUN npm ci --production
+# Linux containers use AES file store; keytar needs desktop secrets and breaks Alpine runtime
+RUN npm ci --omit=dev && npm uninstall keytar --no-save
 
 FROM node:20-alpine
-RUN apk add --no-cache sqlite-libs
+RUN apk add --no-cache sqlite-libs libstdc++
 WORKDIR /app
 RUN mkdir -p /app/data
 COPY --from=backend-builder /app/dist ./dist
