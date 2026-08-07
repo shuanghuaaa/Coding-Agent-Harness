@@ -10,11 +10,11 @@ FROM node:20-alpine AS backend-builder
 RUN apk add --no-cache python3 make g++ git sqlite-dev
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
-RUN npm ci
+# keytar is optional (Windows credential manager); skip it in Linux containers
+RUN npm ci --omit=optional
 COPY src/ ./src/
 RUN npm run build
-# Linux containers use AES file store; keytar needs desktop secrets and breaks Alpine runtime
-RUN npm ci --omit=dev && npm uninstall keytar --no-save
+RUN npm prune --omit=dev
 
 FROM node:20-alpine
 RUN apk add --no-cache sqlite-libs libstdc++
