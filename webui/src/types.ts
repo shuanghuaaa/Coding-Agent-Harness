@@ -34,3 +34,21 @@ export interface HITLRequestPayload {
   reason: string;
   severity: 'high' | 'critical';
 }
+
+export interface SessionSummary {
+  id: number;
+  task: string;
+  status: string;
+  rounds: number;
+  created_at: string;
+}
+
+export interface SessionData {
+  progressEvents: RoundProgress[];
+  feedbackHistory: Array<{ round: number; status: string }>;
+  messages: Array<{ role: string; content: string }>;
+}
+
+export interface SessionRecord extends SessionSummary {
+  data: SessionData;
+}
