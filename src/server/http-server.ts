@@ -220,6 +220,7 @@ export class HarnessServer {
     } else if (msg.type === 'cancel') {
       logger.info('Agent task cancelled');
       this.runningLoops.get(ws)?.cancel();
+      this.rejectHITLForClient(ws);
       ws.send(JSON.stringify({ type: 'status', payload: { status: 'cancelled' } }));
     } else if (msg.type === 'hitl_response') {
       const { toolCallId, approved, modifiedArgs } = (msg.payload as { toolCallId: string; approved: boolean; modifiedArgs?: Record<string, unknown> });

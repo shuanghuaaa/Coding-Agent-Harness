@@ -11,6 +11,7 @@ import { FeedbackValidator } from '../../src/feedback/validator';
 import { FeedbackInjector } from '../../src/feedback/injector';
 import type { Tool } from '../../src/tools/base';
 import type { LLMResponse } from '../../src/agent/types';
+import { shellTool } from '../../src/tools/shell-tool';
 
 const emptyData: SessionData = { progressEvents: [], feedbackHistory: [], messages: [] };
 
@@ -189,6 +190,41 @@ describe('Session persistence on task run', () => {
       setTimeout(() => {
         ws.send(JSON.stringify({ type: 'cancel' }));
       }, 100);
+    });
+    const result = await resultPromise;
+    ws.close();
+
+    expect(result.status).toBe('cancelled');
+    expect(store.list()).toHaveLength(1);
+    expect(store.list()[0].status).toBe('cancelled');
+  });
+
+  it('cancel during HITL approval wait resolves and saves a cancelled session', async () => {
+    store = new SessionStore(':memory:');
+    server = new HarnessServer(
+      makeLoop([
+        {
+          content: null,
+          tool_calls: [{ id: 'c1', name: 'shell', arguments: { command: 'rm -rf /' } }],
+          finish_reason: 'tool_calls',
+        },
+        { content: 'should not reach', tool_calls: [], finish_reason: 'stop' },
+      ], [shellTool]),
+      0,
+      store,
+    );
+    await server.ready;
+
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    const resultPromise = waitForResult(ws);
+    ws.on('open', () => {
+      ws.send(JSON.stringify({ type: 'task', payload: { task: 'delete everything' } }));
+    });
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === 'hitl_request') {
+        ws.send(JSON.stringify({ type: 'cancel' }));
+      }
     });
     const result = await resultPromise;
     ws.close();
