@@ -1,5 +1,7 @@
 FROM node:22-alpine AS webui-builder
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 py3-setuptools make g++ \
+  && ln -sf /usr/bin/python3 /usr/bin/python
+ENV PYTHON=/usr/bin/python3
 WORKDIR /app/webui
 COPY webui/package.json webui/package-lock.json webui/tsconfig.json ./
 RUN npm ci
@@ -7,7 +9,10 @@ COPY webui/ ./
 RUN npm run build
 
 FROM node:22-alpine AS backend-builder
-RUN apk add --no-cache python3 make g++ git sqlite-dev
+RUN apk add --no-cache python3 py3-setuptools make g++ git sqlite-dev \
+  && ln -sf /usr/bin/python3 /usr/bin/python
+ENV PYTHON=/usr/bin/python3
+ENV npm_config_python=/usr/bin/python3
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
 # keytar is optional (Windows credential manager); skip it in Linux containers
