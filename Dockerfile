@@ -1,4 +1,4 @@
-FROM node:20-alpine AS webui-builder
+FROM node:22-alpine AS webui-builder
 RUN apk add --no-cache python3 make g++
 WORKDIR /app/webui
 COPY webui/package.json webui/package-lock.json webui/tsconfig.json ./
@@ -6,7 +6,7 @@ RUN npm ci
 COPY webui/ ./
 RUN npm run build
 
-FROM node:20-alpine AS backend-builder
+FROM node:22-alpine AS backend-builder
 RUN apk add --no-cache python3 make g++ git sqlite-dev
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
@@ -16,7 +16,7 @@ COPY src/ ./src/
 RUN npm run build
 RUN npm prune --omit=dev
 
-FROM node:20-alpine
+FROM node:22-alpine
 RUN apk add --no-cache sqlite-libs libstdc++
 WORKDIR /app
 RUN mkdir -p /app/data
