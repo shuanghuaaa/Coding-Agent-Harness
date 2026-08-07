@@ -94,7 +94,7 @@ export function SessionSidebar({
             <button
               type="button"
               className="session-delete"
-              aria-label="删除会话"
+              aria-label={`删除会话：${s.task.slice(0, 20)}`}
               onClick={() => onDelete(s.id)}
             >
               <Trash2 size={12} aria-hidden />
