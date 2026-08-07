@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import type { CredentialStore } from './store';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -47,9 +47,9 @@ export class AESFileCredentialStore implements CredentialStore {
   private filePath: string;
   private entries: CredentialEntry[];
 
-  constructor(masterPassword: string) {
+  constructor(masterPassword: string, filePath?: string) {
     this.key = deriveKey(masterPassword);
-    this.filePath = join(DATA_DIR, CREDENTIALS_FILE);
+    this.filePath = filePath ?? join(DATA_DIR, CREDENTIALS_FILE);
     this.entries = this.load();
   }
 
@@ -68,9 +68,7 @@ export class AESFileCredentialStore implements CredentialStore {
   }
 
   private save(): void {
-    if (!existsSync(DATA_DIR)) {
-      mkdirSync(DATA_DIR, { recursive: true });
-    }
+    mkdirSync(dirname(this.filePath), { recursive: true });
     const data: CredentialData = { entries: this.entries };
     const plaintext = JSON.stringify(data);
     const encrypted = encrypt(plaintext, this.key);
