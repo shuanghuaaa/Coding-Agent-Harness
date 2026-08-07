@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { WSMessage, AgentResult, HITLRequestPayload } from '../types';
+import type { WSMessage, AgentResult, HITLRequestPayload, RoundProgress, ChatItem } from '../types';
 
 export function useWebSocket(url: string) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -7,6 +7,8 @@ export function useWebSocket(url: string) {
   const [result, setResult] = useState<AgentResult | null>(null);
   const [status, setStatus] = useState<string>('idle');
   const [hitlRequest, setHitlRequest] = useState<HITLRequestPayload | null>(null);
+  const [chat, setChat] = useState<ChatItem[]>([]);
+  const idRef = useRef(0);
 
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get('token') || '';
@@ -20,8 +22,24 @@ export function useWebSocket(url: string) {
       const msg: WSMessage = JSON.parse(event.data);
       if (msg.type === 'status') {
         setStatus((msg.payload as { status: string }).status);
+      } else if (msg.type === 'progress') {
+        const p = msg.payload as RoundProgress;
+        setChat((prev) => [
+          ...prev,
+          {
+            id: `agent-${++idRef.current}`,
+            kind: 'agent',
+            round: p.round,
+            text: p.assistantContent,
+            actions: p.actions,
+            feedbackStatus: p.feedbackStatus,
+          },
+        ]);
       } else if (msg.type === 'result') {
-        setResult(msg.payload as AgentResult);
+        const payload = msg.payload as AgentResult;
+        setResult(payload);
+        setStatus(payload.status || 'idle');
+        setHitlRequest(null);
       } else if (msg.type === 'hitl_request') {
         setHitlRequest(msg.payload as HITLRequestPayload);
       }
@@ -35,6 +53,10 @@ export function useWebSocket(url: string) {
     setStatus('running');
     setResult(null);
     setHitlRequest(null);
+    setChat((prev) => [
+      ...prev,
+      { id: `user-${++idRef.current}`, kind: 'user', text: task },
+    ]);
   }, []);
 
   const cancel = useCallback(() => {
@@ -50,5 +72,5 @@ export function useWebSocket(url: string) {
     setHitlRequest(null);
   }, [hitlRequest]);
 
-  return { connected, status, result, hitlRequest, sendTask, cancel, respondHITL };
+  return { connected, status, result, hitlRequest, chat, sendTask, cancel, respondHITL };
 }

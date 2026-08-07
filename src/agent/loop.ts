@@ -23,6 +23,15 @@ export interface HITLResponse {
 
 export type HITLCallback = (request: HITLRequest) => Promise<HITLResponse>;
 
+export interface RoundProgress {
+  round: number;
+  assistantContent: string;
+  actions: Array<{ tool: string; result: string }>;
+  feedbackStatus?: string;
+}
+
+export type ProgressCallback = (event: RoundProgress) => void;
+
 export interface AgentLoopConfig {
   llm: LLMProvider;
   dispatcher: ToolDispatcher;
@@ -32,6 +41,7 @@ export interface AgentLoopConfig {
   injector: FeedbackInjector;
   feedbackToolNames?: string[];
   hitlCallback?: HITLCallback;
+  onProgress?: ProgressCallback;
 }
 
 export interface RunResult {
@@ -82,10 +92,12 @@ export class AgentLoop {
       );
 
       if (stopResult.stop) {
+        this.emitProgress(round, response.content ?? '', []);
         return this.buildResult(stopResult.reason, round);
       }
 
       if (response.tool_calls.length === 0) {
+        this.emitProgress(round, response.content ?? '', []);
         return {
           status: 'completed',
           rounds: round,
@@ -93,6 +105,9 @@ export class AgentLoop {
           feedbackHistory: this.feedbackHistory,
         };
       }
+
+      const actions: Array<{ tool: string; result: string }> = [];
+      let roundFeedback: string | undefined;
 
       for (const toolCall of response.tool_calls) {
         const guardResult = guardrail(toolCall.name, toolCall.arguments);
@@ -109,26 +124,41 @@ export class AgentLoop {
 
             if (hitlResponse.approved) {
               const args = hitlResponse.modifiedArgs ?? toolCall.arguments;
-              await this.executeToolCall(toolCall.id, toolCall.name, args, round);
+              const executed = await this.executeToolCall(toolCall.id, toolCall.name, args, round);
+              actions.push({ tool: toolCall.name, result: executed.content });
+              if (executed.feedbackStatus) roundFeedback = executed.feedbackStatus;
             } else {
+              const blocked = `BLOCKED (user rejected): ${guardResult.reason}`;
               this.messages.push({
                 role: 'tool',
                 tool_call_id: toolCall.id,
-                content: `BLOCKED (user rejected): ${guardResult.reason}`,
+                content: blocked,
               });
+              actions.push({ tool: toolCall.name, result: blocked });
             }
           } else {
+            const blocked = `BLOCKED: ${guardResult.reason}`;
             this.messages.push({
               role: 'tool',
               tool_call_id: toolCall.id,
-              content: `BLOCKED: ${guardResult.reason}`,
+              content: blocked,
             });
+            actions.push({ tool: toolCall.name, result: blocked });
           }
           continue;
         }
 
-        await this.executeToolCall(toolCall.id, toolCall.name, toolCall.arguments, round);
+        const executed = await this.executeToolCall(
+          toolCall.id,
+          toolCall.name,
+          toolCall.arguments,
+          round,
+        );
+        actions.push({ tool: toolCall.name, result: executed.content });
+        if (executed.feedbackStatus) roundFeedback = executed.feedbackStatus;
       }
+
+      this.emitProgress(round, response.content ?? '', actions, roundFeedback);
 
       if (this.cancelled) {
         return {
@@ -148,19 +178,37 @@ export class AgentLoop {
     };
   }
 
+  private emitProgress(
+    round: number,
+    assistantContent: string,
+    actions: Array<{ tool: string; result: string }>,
+    feedbackStatus?: string,
+  ): void {
+    this.config.onProgress?.({
+      round,
+      assistantContent,
+      actions,
+      feedbackStatus,
+    });
+  }
+
   private async executeToolCall(
     callId: string,
     name: string,
     args: Record<string, unknown>,
     round: number,
-  ): Promise<void> {
+  ): Promise<{ content: string; feedbackStatus?: string }> {
     const result = await this.config.dispatcher.dispatch(name, args);
+    const content = result.error
+      ? `${result.content}\n${result.error}`.trim()
+      : result.content;
     this.messages.push({
       role: 'tool',
       tool_call_id: callId,
-      content: result.content,
+      content,
     });
 
+    let feedbackStatus: string | undefined;
     if (this.feedbackToolNames.includes(name)) {
       const feedback = this.config.validator.validate(
         result.content,
@@ -172,7 +220,9 @@ export class AgentLoop {
         status: feedback.status,
       });
       this.config.injector.inject(this.messages, feedback);
+      feedbackStatus = feedback.status;
     }
+    return { content, feedbackStatus };
   }
 
   private buildResult(reason: string, round: number): RunResult {

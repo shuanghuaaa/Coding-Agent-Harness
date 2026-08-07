@@ -520,15 +520,32 @@ class FeedbackInjector {
 | 技术 | 选型 | 理由 |
 |------|------|------|
 | 语言 | TypeScript 5.4+ | LLM SDK 生态最完善；vitest mock 机制最强；前后端统一语言减少上下文切换；严格类型检查减少运行时错误 |
-| 运行时 | Node.js 20 LTS | 长期支持稳定；Docker 镜像小（alpine）；npm 生态丰富 |
+| 运行时 | Node.js 22 | 满足 `openai` 引擎要求；Docker `node:22-alpine` |
 | 测试 | Vitest 1.6 | 原生 TypeScript 支持；mock 机制强大；与 Vite 共享配置 |
 | 记忆存储 | SQLite（better-sqlite3） | 零配置、嵌入式、无需额外进程；满足最低实现要求 |
-| 凭据存储 | keytar（Windows CM）+ AES-256-GCM | Windows CM 优先（OS 级别加密）；AES-256-GCM 跨平台 fallback（随机 IV + 认证标签） |
+| 凭据存储 | keytar（Windows CM，optional）+ AES-256-GCM | Windows CM 优先；AES-256-GCM 跨平台 fallback；Linux 容器省略 keytar |
 | WebSocket | ws | 轻量（无额外依赖）；前后端实时通信 |
-| 前端 | React 18 + Vite | 生态成熟；HMR 开发体验好；Open Design 支持 |
-| 前端设计 | Open Design（nexu-io/open-design） | 课程推荐的 AI 驱动设计系统；使用 `emil-design-eng` skill 指导 UI 打磨 |
+| 前端 | React 18 + Vite | 生态成熟；HMR 开发体验好；承接 Open Design 产物 |
+| 前端设计 | Open Design + Harness Terminal | 见 §10.1 |
 | LLM | OpenAI 兼容 API | 可插拔，支持自定义 baseURL（适配 njusehub 中转）；MockLLM 用于离线测试 |
-| 分发 | Docker（多阶段构建） | 一键部署；环境隔离；`node:20-alpine` 最小镜像 |
+| 分发 | Docker（多阶段构建） | 一键部署；环境隔离；`node:22-alpine` 最小镜像 |
+
+### 10.1 前端设计系统（Open Design）
+
+本项目 WebUI 按课程通用要求 §3.6，使用 **[Open Design](https://github.com/nexu-io/open-design)** 进行界面开发，并在此说明所选设计系统与 skill。
+
+| 项 | 选型 | 说明 |
+|----|------|------|
+| 工具链 | [Open Design](https://github.com/nexu-io/open-design) | brief → design system → artifact → 迁入 `webui/` |
+| 设计系统 | **Harness Terminal** | 高对比终端风（近黑底、终端绿强调、等宽字体、低圆角） |
+| 设计合同 | `webui/DESIGN.md` | 色板、字体、布局、组件与动效 token |
+| Open Design skill | prototype / live-artifact | 产出控制台结构与视觉方向 |
+| Cursor skill | `emil-design-eng` | 按钮 press、HITL 入场、连接 LED pulse 等交互打磨（ease-out，&lt;300ms） |
+| 实现落点 | `webui/src/` | `styles.css` + `ChatPanel` / `AgentLog` / `HITLModal` |
+
+**不做：** 多主题切换、重型 UI 组件库、营销落地页。WebUI 定位为单页 Operator Console；Harness 内核可在无 UI 下独立测试。
+
+设计过程纪要：`docs/superpowers/specs/2026-08-07-harness-terminal-ui-design.md`。
 
 ---
 
@@ -561,5 +578,5 @@ class FeedbackInjector {
 
 ---
 
-> **SPEC 版本**：v2.0（严格对照 §A.4 实现边界要求重写）  
-> **最后更新**：2026-08-05
+> **SPEC 版本**：v2.1（补充 Open Design / Harness Terminal 前端设计系统说明）  
+> **最后更新**：2026-08-07

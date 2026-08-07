@@ -1,6 +1,23 @@
 export interface WSMessage {
-  type: 'status' | 'result' | 'hitl_request' | 'log';
+  type: 'status' | 'result' | 'hitl_request' | 'log' | 'progress';
   payload: unknown;
+}
+
+export interface RoundProgress {
+  round: number;
+  assistantContent: string;
+  actions: Array<{ tool: string; result: string }>;
+  feedbackStatus?: string;
+}
+
+export interface ChatItem {
+  id: string;
+  kind: 'user' | 'agent';
+  /** user text, or agent round card */
+  text?: string;
+  round?: number;
+  actions?: Array<{ tool: string; result: string }>;
+  feedbackStatus?: string;
 }
 
 export interface AgentResult {

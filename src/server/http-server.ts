@@ -114,27 +114,36 @@ export class HarnessServer {
       const loopWithHITL = new AgentLoop({
         ...this.loop.config,
         hitlCallback,
+        onProgress: (event) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'progress', payload: event }));
+          }
+        },
       });
 
       try {
         const result = await loopWithHITL.run(task);
         logger.info('Agent task completed', { status: result.status, rounds: result.rounds });
 
-        ws.send(JSON.stringify({
-          type: 'result',
-          payload: {
-            status: result.status,
-            rounds: result.rounds,
-            messages: result.messages,
-            feedbackHistory: result.feedbackHistory,
-          },
-        }));
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'result',
+            payload: {
+              status: result.status,
+              rounds: result.rounds,
+              messages: result.messages,
+              feedbackHistory: result.feedbackHistory,
+            },
+          }));
+        }
       } catch (err) {
         logger.error('Agent task failed', { error: String(err) });
-        ws.send(JSON.stringify({
-          type: 'status',
-          payload: { status: 'error', error: String(err) },
-        }));
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'status',
+            payload: { status: 'error', error: String(err) },
+          }));
+        }
       }
     } else if (msg.type === 'cancel') {
       logger.info('Agent task cancelled');
