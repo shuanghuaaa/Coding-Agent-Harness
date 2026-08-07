@@ -1,9 +1,11 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
+import type { AddressInfo } from 'node:net';
 import { WebSocketServer, WebSocket } from 'ws';
 import { AgentLoop } from '../agent/loop';
-import type { HITLRequest, HITLResponse } from '../agent/loop';
+import type { HITLRequest, HITLResponse, RoundProgress, RunResult } from '../agent/loop';
+import type { SessionStore, SessionData } from './session-store';
 import type { WSMessage } from './types';
 import { logger } from '../utils/logger';
 
@@ -18,11 +20,15 @@ export class HarnessServer {
   private server: http.Server;
   private wss: WebSocketServer;
   private loop: AgentLoop;
+  private sessionStore?: SessionStore;
   private token: string;
   private pendingHITL: Map<string, PendingHITL> = new Map();
+  private runningLoops: Map<WebSocket, AgentLoop> = new Map();
+  public readonly ready: Promise<void>;
 
-  constructor(loop: AgentLoop, port: number = 3000) {
+  constructor(loop: AgentLoop, port: number = 3000, sessionStore?: SessionStore) {
     this.loop = loop;
+    this.sessionStore = sessionStore;
     this.token = process.env.HARNESS_TOKEN || '';
 
     this.app = express();
@@ -46,6 +52,31 @@ export class HarnessServer {
       res.json({ status: 'ok' });
     });
 
+    if (this.sessionStore) {
+      const store = this.sessionStore;
+      this.app.get('/api/sessions', (_req, res) => {
+        res.json(store.list());
+      });
+      this.app.get('/api/sessions/:id', (req, res) => {
+        const id = Number(req.params.id);
+        const record = Number.isInteger(id) ? store.get(id) : undefined;
+        if (!record) {
+          res.status(404).json({ error: 'session not found' });
+          return;
+        }
+        res.json(record);
+      });
+      this.app.delete('/api/sessions/:id', (req, res) => {
+        const id = Number(req.params.id);
+        const ok = Number.isInteger(id) ? store.delete(id) : false;
+        if (!ok) {
+          res.status(404).json({ error: 'session not found' });
+          return;
+        }
+        res.json({ ok: true });
+      });
+    }
+
     this.app.use(express.static(path.join(__dirname, '../../webui/dist')));
     this.app.get('*', (_req, res) => {
       res.sendFile(path.join(__dirname, '../../webui/dist/index.html'));
@@ -62,14 +93,29 @@ export class HarnessServer {
         }
       });
       ws.on('close', () => {
+        this.runningLoops.get(ws)?.cancel();
+        this.runningLoops.delete(ws);
         this.rejectHITLForClient(ws);
         logger.info('WebSocket client disconnected');
       });
     });
 
-    this.server.listen(port, '0.0.0.0', () => {
-      logger.info(`Harness server running on 0.0.0.0:${port}`);
+    this.ready = new Promise((resolve) => {
+      this.server.listen(port, '0.0.0.0', () => {
+        logger.info(`Harness server running on 0.0.0.0:${this.port}`);
+        resolve();
+      });
     });
+  }
+
+  get port(): number {
+    const addr = this.server.address() as AddressInfo | null;
+    return addr?.port ?? 0;
+  }
+
+  close(): void {
+    this.wss.close();
+    this.server.close();
   }
 
   private rejectHITLForClient(ws: WebSocket): void {
@@ -104,6 +150,21 @@ export class HarnessServer {
     };
   }
 
+  private saveSession(task: string, result: RunResult, progressEvents: RoundProgress[]): void {
+    if (!this.sessionStore) return;
+    try {
+      const data: SessionData = {
+        progressEvents,
+        feedbackHistory: result.feedbackHistory,
+        messages: result.messages,
+      };
+      const id = this.sessionStore.save({ task, status: result.status, rounds: result.rounds, data });
+      logger.info('Session saved', { id, status: result.status, rounds: result.rounds });
+    } catch (err) {
+      logger.error('Failed to save session', { error: String(err) });
+    }
+  }
+
   private async handleMessage(ws: WebSocket, msg: WSMessage): Promise<void> {
     if (msg.type === 'task') {
       const { task } = msg.payload as { task: string };
@@ -111,19 +172,23 @@ export class HarnessServer {
       ws.send(JSON.stringify({ type: 'status', payload: { status: 'running' } }));
 
       const hitlCallback = this.createHITLCallback(ws);
+      const progressEvents: RoundProgress[] = [];
       const loopWithHITL = new AgentLoop({
         ...this.loop.config,
         hitlCallback,
         onProgress: (event) => {
+          progressEvents.push(event);
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'progress', payload: event }));
           }
         },
       });
+      this.runningLoops.set(ws, loopWithHITL);
 
       try {
         const result = await loopWithHITL.run(task);
         logger.info('Agent task completed', { status: result.status, rounds: result.rounds });
+        this.saveSession(task, result, progressEvents);
 
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
@@ -138,16 +203,23 @@ export class HarnessServer {
         }
       } catch (err) {
         logger.error('Agent task failed', { error: String(err) });
+        this.saveSession(
+          task,
+          { status: 'error', rounds: progressEvents.length, messages: [], feedbackHistory: [] },
+          progressEvents,
+        );
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
             type: 'status',
             payload: { status: 'error', error: String(err) },
           }));
         }
+      } finally {
+        this.runningLoops.delete(ws);
       }
     } else if (msg.type === 'cancel') {
       logger.info('Agent task cancelled');
-      this.loop.cancel();
+      this.runningLoops.get(ws)?.cancel();
       ws.send(JSON.stringify({ type: 'status', payload: { status: 'cancelled' } }));
     } else if (msg.type === 'hitl_response') {
       const { toolCallId, approved, modifiedArgs } = (msg.payload as { toolCallId: string; approved: boolean; modifiedArgs?: Record<string, unknown> });
@@ -157,7 +229,7 @@ export class HarnessServer {
         pending.resolve({ toolCallId, approved, modifiedArgs });
         this.pendingHITL.delete(toolCallId);
       } else {
-        logger.warn('HITL response for unknown request', { toolCallId });
+        logger.warn('HITL response for unknown tool call', { toolCallId });
       }
     }
   }

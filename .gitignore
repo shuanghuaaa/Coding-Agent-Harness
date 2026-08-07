@@ -2,6 +2,8 @@ node_modules/
 dist/
 *.db
 *.sqlite
+*.db-shm
+*.db-wal
 .env
 /credentials/
 .DS_Store

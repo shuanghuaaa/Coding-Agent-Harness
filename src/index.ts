@@ -9,6 +9,7 @@ import { searchTool, gitDiffTool, runTestTool } from './tools/search-git-test-to
 import { FeedbackValidator } from './feedback/validator';
 import { FeedbackInjector } from './feedback/injector';
 import { MemoryStore } from './memory/store';
+import { SessionStore } from './server/session-store';
 import { ConfigLoader } from './config/loader';
 import { MockLLM } from './llm/mock-llm';
 import { OpenAICompatibleProvider } from './llm/openai-compatible';
@@ -67,6 +68,9 @@ async function main(): Promise<void> {
   const memories = memoryStore.list().map((m) => `${m.key}: ${m.value}`);
   logger.info('Memory store initialized', { entryCount: memories.length });
 
+  const sessionStore = new SessionStore('data/sessions.db');
+  logger.info('Session store initialized', { path: 'data/sessions.db' });
+
   const tools = [readFileTool, writeFileTool, deleteFileTool, shellTool, searchTool, gitDiffTool, runTestTool];
   const dispatcher = new ToolDispatcher(tools);
 
@@ -96,17 +100,19 @@ async function main(): Promise<void> {
   if (Number.isNaN(port)) {
     throw new Error(`Invalid PORT value: ${process.env.PORT}`);
   }
-  new HarnessServer(loop, port);
+  new HarnessServer(loop, port, sessionStore);
 
   process.on('SIGTERM', () => {
     logger.info('Shutting down...');
     memoryStore.close();
+    sessionStore.close();
     process.exit(0);
   });
 
   process.on('SIGINT', () => {
     logger.info('Shutting down...');
     memoryStore.close();
+    sessionStore.close();
     process.exit(0);
   });
 }
