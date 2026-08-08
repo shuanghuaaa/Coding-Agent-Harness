@@ -741,3 +741,238 @@ textarea {
 .prompt-wrap input:disabled {
   opacity: 0.5;
 }
+
+/* ---------- control deck ---------- */
+
+.deck {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.deck-panel {
+  padding: 12px;
+}
+
+.deck-panel .panel-label {
+  margin-bottom: 10px;
+}
+
+.deck-empty,
+.trail-empty {
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+/* loop indicator */
+
+.loop-flow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.loop-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  min-width: 56px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  transition:
+    border-color 300ms var(--ease-out),
+    color 300ms var(--ease-out),
+    box-shadow 300ms var(--ease-out);
+}
+
+.loop-node.active {
+  color: var(--accent);
+  border-color: rgba(61, 214, 140, 0.6);
+  box-shadow: 0 0 12px rgba(61, 214, 140, 0.25);
+}
+
+.loop-node.awaiting {
+  color: var(--warn);
+  border-color: rgba(230, 162, 60, 0.6);
+  box-shadow: 0 0 12px rgba(230, 162, 60, 0.25);
+  animation: led-pulse 1s linear infinite;
+}
+
+.loop-node.done {
+  color: var(--info);
+  border-color: rgba(34, 211, 238, 0.35);
+}
+
+.loop-node.fail {
+  color: var(--danger);
+  border-color: rgba(240, 113, 120, 0.55);
+}
+
+.loop-node.pass {
+  color: var(--accent);
+  border-color: rgba(61, 214, 140, 0.55);
+}
+
+.loop-link {
+  flex: 1;
+  height: 1px;
+  background: var(--border-strong);
+  min-width: 6px;
+}
+
+/* round timeline */
+
+.round-tl {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.round-tl-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--border);
+  padding: 5px 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    color 120ms var(--ease-out),
+    border-color 120ms var(--ease-out);
+}
+
+.round-tl-node:hover {
+  color: var(--text);
+}
+
+.round-tl-node.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+.round-tl-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.round-tl-node.active .round-tl-dot {
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(61, 214, 140, 0.8);
+  animation: led-pulse 1.6s linear infinite;
+}
+
+.round-tl-node.fail .round-tl-dot {
+  background: var(--danger);
+}
+
+.round-tl-node.pass .round-tl-dot {
+  background: var(--accent);
+}
+
+/* feedback trail */
+
+.trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.trail-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trail-arrow {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.trail-node {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  border: 1px solid;
+  letter-spacing: 0.06em;
+}
+
+.trail-node.fail {
+  color: var(--danger);
+  border-color: rgba(240, 113, 120, 0.5);
+  background: rgba(240, 113, 120, 0.08);
+}
+
+.trail-node.pass {
+  color: var(--accent);
+  border-color: rgba(61, 214, 140, 0.5);
+  background: rgba(61, 214, 140, 0.08);
+}
+
+/* tool stats */
+
+.tool-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tool-stat-row {
+  display: grid;
+  grid-template-columns: 76px 1fr 20px;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.tool-stat-name {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-stat-bar {
+  height: 6px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.tool-stat-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--info), var(--accent));
+  transition: width 300ms var(--ease-out);
+}
+
+.tool-stat-count {
+  text-align: right;
+  color: var(--text);
+}
