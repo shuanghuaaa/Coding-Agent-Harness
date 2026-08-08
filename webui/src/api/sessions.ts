@@ -1,7 +1,13 @@
 import type { SessionRecord, SessionSummary } from '../types';
 
+function authHeaders(): HeadersInit {
+  const token = new URLSearchParams(window.location.search).get('token') || '';
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+  const headers = { ...authHeaders(), ...(init?.headers ?? {}) };
+  const res = await fetch(path, { ...init, headers });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }

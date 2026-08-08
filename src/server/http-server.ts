@@ -54,10 +54,25 @@ export class HarnessServer {
 
     if (this.sessionStore) {
       const store = this.sessionStore;
-      this.app.get('/api/sessions', (_req, res) => {
+      const requireToken: express.RequestHandler = (req, res, next) => {
+        if (!this.token) {
+          next();
+          return;
+        }
+        const auth = req.headers.authorization;
+        const bearer = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
+        const queryToken = typeof req.query.token === 'string' ? req.query.token : undefined;
+        if (bearer === this.token || queryToken === this.token) {
+          next();
+          return;
+        }
+        res.status(401).json({ error: 'unauthorized' });
+      };
+
+      this.app.get('/api/sessions', requireToken, (_req, res) => {
         res.json(store.list());
       });
-      this.app.get('/api/sessions/:id', (req, res) => {
+      this.app.get('/api/sessions/:id', requireToken, (req, res) => {
         const id = Number(req.params.id);
         const record = Number.isInteger(id) ? store.get(id) : undefined;
         if (!record) {
@@ -66,7 +81,7 @@ export class HarnessServer {
         }
         res.json(record);
       });
-      this.app.delete('/api/sessions/:id', (req, res) => {
+      this.app.delete('/api/sessions/:id', requireToken, (req, res) => {
         const id = Number(req.params.id);
         const ok = Number.isInteger(id) ? store.delete(id) : false;
         if (!ok) {

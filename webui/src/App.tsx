@@ -42,8 +42,10 @@ export default function App() {
   const busy = BUSY.has(status);
 
   useEffect(() => {
-    if (result) void refresh();
-  }, [result, refresh]);
+    if (result || status === 'error' || status === 'cancelled') {
+      void refresh();
+    }
+  }, [result, status, refresh]);
 
   const items = review ? chatFromSession(review) : chat;
   const agentItems = items.filter((it) => it.kind === 'agent');

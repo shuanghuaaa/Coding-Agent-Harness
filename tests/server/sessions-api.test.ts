@@ -98,6 +98,49 @@ describe('Sessions REST API', () => {
   });
 });
 
+describe('Sessions REST API auth', () => {
+  let store: SessionStore;
+  let server: HarnessServer;
+  let base: string;
+  const prevToken = process.env.HARNESS_TOKEN;
+
+  beforeEach(async () => {
+    process.env.HARNESS_TOKEN = 'test-secret';
+    store = new SessionStore(':memory:');
+    server = new HarnessServer(
+      makeLoop([{ content: 'done', tool_calls: [], finish_reason: 'stop' }]),
+      0,
+      store,
+    );
+    await server.ready;
+    base = `http://127.0.0.1:${server.port}`;
+  });
+
+  afterEach(() => {
+    server.close();
+    store.close();
+    if (prevToken === undefined) {
+      delete process.env.HARNESS_TOKEN;
+    } else {
+      process.env.HARNESS_TOKEN = prevToken;
+    }
+  });
+
+  it('rejects unauthenticated GET /api/sessions with 401', async () => {
+    const res = await fetch(`${base}/api/sessions`);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'unauthorized' });
+  });
+
+  it('allows GET /api/sessions with Bearer token', async () => {
+    const res = await fetch(`${base}/api/sessions`, {
+      headers: { Authorization: 'Bearer test-secret' },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+  });
+});
+
 describe('Session persistence on task run', () => {
   let store: SessionStore;
   let server: HarnessServer;

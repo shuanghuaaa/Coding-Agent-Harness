@@ -39,7 +39,11 @@ export function useWebSocket(url: string) {
       ws.onmessage = (event) => {
         const msg: WSMessage = JSON.parse(event.data);
         if (msg.type === 'status') {
-          setStatus((msg.payload as { status: string }).status);
+          const next = (msg.payload as { status: string }).status;
+          setStatus(next);
+          if (next === 'error' || next === 'cancelled') {
+            setHitlRequest(null);
+          }
         } else if (msg.type === 'progress') {
           const p = msg.payload as RoundProgress;
           setChat((prev) => [
