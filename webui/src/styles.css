@@ -1090,3 +1090,26 @@ textarea {
   justify-content: flex-end;
   padding: 0 18px 16px;
 }
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 1100px) {
+  .app-body,
+  .app-body.no-deck {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .app-body.no-sidebar,
+  .app-body.no-sidebar.no-deck {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-body .deck {
+    position: fixed;
+    right: 12px;
+    top: 64px;
+    bottom: 12px;
+    width: 320px;
+    z-index: 100;
+  }
+}

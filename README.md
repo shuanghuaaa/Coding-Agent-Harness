@@ -153,9 +153,10 @@ coding-agent-harness/
 │   └── utils/          # 日志工具
 ├── webui/              # React + Vite 前端
 │   └── src/
-│       ├── components/ # ChatPanel, AgentLog, HITLModal
-│       └── hooks/      # WebSocket 钩子
-├── tests/              # 测试（23 个文件，84 个测试）
+│       ├── api/        # sessions REST 封装
+│       ├── components/ # TopBar, SessionSidebar, ChatTimeline, ControlDeck, HITLModal 等
+│       └── hooks/      # WebSocket（自动重连）与会话列表钩子
+├── tests/              # 测试（25 个文件，94 个测试）
 ├── .github/workflows/  # CI 配置
 ├── Dockerfile
 ├── docker-compose.yml
@@ -205,7 +206,7 @@ coding-agent-harness/
 # 一键运行全部测试
 npm test
 
-# 输出：23 个文件，84 个测试全部通过
+# 输出：25 个文件，94 个测试全部通过
 ```
 
 ### 机制演示
