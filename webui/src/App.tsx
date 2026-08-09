@@ -6,7 +6,7 @@ import { TopBar } from './components/TopBar';
 import { SessionSidebar } from './components/SessionSidebar';
 import { ChatTimeline, type EndSummary } from './components/ChatTimeline';
 import { HITLModal } from './components/HITLModal';
-import { Paperclip, Mic, ChevronDown } from 'lucide-react';
+import { Paperclip, Mic, ChevronDown, ArrowUpRight, Plus, SlidersHorizontal, MessageSquare, History, Settings, BarChart3 } from 'lucide-react';
 import type { ChatItem, SessionRecord } from './types';
 
 const BUSY = new Set(['running']);
@@ -32,6 +32,7 @@ export default function App() {
   const [review, setReview] = useState<SessionRecord | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeNav, setActiveNav] = useState<'chat' | 'history' | 'stats' | 'settings'>('chat');
   const [model, setModel] = useState(MODELS[0]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [composerExpanded, setComposerExpanded] = useState(false);
@@ -153,6 +154,44 @@ export default function App() {
       />
 
       <div className={`app-body ${sidebarOpen ? '' : 'no-sidebar'}`}>
+        <nav className="rail">
+          <button
+            type="button"
+            className={`rail-item ${activeNav === 'chat' ? 'active' : ''}`}
+            onClick={() => setActiveNav('chat')}
+            aria-label="对话"
+          >
+            <MessageSquare size={18} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`rail-item ${activeNav === 'history' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveNav('history');
+              setSidebarOpen(true);
+            }}
+            aria-label="历史会话"
+          >
+            <History size={18} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`rail-item ${activeNav === 'stats' ? 'active' : ''}`}
+            onClick={() => setActiveNav('stats')}
+            aria-label="统计"
+          >
+            <BarChart3 size={18} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`rail-item ${activeNav === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveNav('settings')}
+            aria-label="设置"
+          >
+            <Settings size={18} aria-hidden />
+          </button>
+        </nav>
+
         {sidebarOpen && (
           <SessionSidebar
             sessions={sessions}
@@ -200,15 +239,48 @@ export default function App() {
                 hidden
                 onChange={handleFiles}
               />
-              <button
-                type="button"
-                className="composer-icon"
-                onClick={handleAttach}
-                disabled={busy || Boolean(review)}
-                aria-label="上传文件"
-              >
-                <Paperclip size={16} aria-hidden />
-              </button>
+
+              <div className="composer-rail">
+                <button
+                  type="button"
+                  className="composer-icon"
+                  onClick={() => {
+                    setTask('');
+                    setAttachedFiles([]);
+                    setReview(null);
+                  }}
+                  disabled={busy}
+                  aria-label="清空输入"
+                >
+                  <Plus size={16} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  className="composer-icon"
+                  onClick={handleAttach}
+                  disabled={busy || Boolean(review)}
+                  aria-label="上传文件"
+                >
+                  <Paperclip size={16} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  className="composer-icon"
+                  disabled={busy || Boolean(review)}
+                  aria-label="语音输入"
+                >
+                  <Mic size={16} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  className="composer-icon"
+                  onClick={() => setModelMenuOpen((v) => !v)}
+                  disabled={busy || Boolean(review)}
+                  aria-label="调整参数"
+                >
+                  <SlidersHorizontal size={16} aria-hidden />
+                </button>
+              </div>
 
               <div className="prompt-wrap">
                 <textarea
@@ -257,20 +329,12 @@ export default function App() {
               </div>
 
               <button
-                type="button"
-                className="composer-icon"
-                disabled={busy || Boolean(review)}
-                aria-label="语音输入"
-              >
-                <Mic size={16} aria-hidden />
-              </button>
-
-              <button
                 type="submit"
                 className="btn btn-primary composer-send"
                 disabled={busy || !connected || Boolean(review) || (!task.trim() && attachedFiles.length === 0)}
+                aria-label="发送"
               >
-                发送
+                <ArrowUpRight size={18} aria-hidden />
               </button>
               {busy && (
                 <button type="button" className="btn btn-danger" onClick={cancel}>
