@@ -726,6 +726,7 @@ textarea {
 
 .composer-container.collapsed .prompt-wrap {
   min-height: 40px;
+  justify-content: center;
 }
 
 .composer-container.expanded .prompt-wrap {
@@ -735,6 +736,8 @@ textarea {
 .composer-container.collapsed .prompt-wrap textarea {
   min-height: 24px;
   max-height: 24px;
+  padding: 8px 0;
+  line-height: 24px;
 }
 
 .composer-container.expanded .prompt-wrap textarea {
@@ -870,7 +873,7 @@ textarea {
   resize: none;
   min-height: 72px;
   max-height: 200px;
-  transition: min-height 200ms var(--ease-out), max-height 200ms var(--ease-out);
+  transition: min-height 200ms var(--ease-out), max-height 200ms var(--ease-out), padding 200ms var(--ease-out), line-height 200ms var(--ease-out);
 }
 
 .prompt-wrap textarea::placeholder {
