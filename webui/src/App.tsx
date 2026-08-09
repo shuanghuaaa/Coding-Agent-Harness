@@ -3,14 +3,74 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useSessions } from './hooks/useSessions';
 import { getSession } from './api/sessions';
 import { TopBar } from './components/TopBar';
-import { SessionSidebar } from './components/SessionSidebar';
 import { ChatTimeline, type EndSummary } from './components/ChatTimeline';
 import { HITLModal } from './components/HITLModal';
-import { Paperclip, Mic, ChevronDown } from 'lucide-react';
+import {
+  Paperclip,
+  Mic,
+  ChevronDown,
+  Folder,
+  FileCode,
+  FileText,
+  File,
+  Cpu,
+  GitBranch,
+  Server,
+  Clock,
+  Bot,
+  CircleDot,
+  Circle,
+  Loader2,
+} from 'lucide-react';
 import type { ChatItem, SessionRecord } from './types';
 
 const BUSY = new Set(['running']);
 const MODELS = ['K2.5', 'K2.5 Agent', 'K1.5'];
+
+interface FileNode {
+  name: string;
+  path: string;
+  type: 'file' | 'folder';
+  modified?: boolean;
+  children?: FileNode[];
+}
+
+const MOCK_FILE_TREE: FileNode[] = [
+  {
+    name: 'src',
+    path: 'src',
+    type: 'folder',
+    children: [
+      { name: 'server', path: 'src/server', type: 'folder', children: [
+        { name: 'http-server.ts', path: 'src/server/http-server.ts', type: 'file', modified: true },
+        { name: 'index.ts', path: 'src/index.ts', type: 'file' },
+      ]},
+      { name: 'workspace', path: 'src/workspace', type: 'folder', children: [
+        { name: 'checkpoint.ts', path: 'src/workspace/checkpoint.ts', type: 'file', modified: true },
+      ]},
+      { name: 'credentials', path: 'src/credentials', type: 'folder', children: [
+        { name: 'aes-file.ts', path: 'src/credentials/aes-file.ts', type: 'file' },
+      ]},
+    ],
+  },
+  { name: 'webui', path: 'webui', type: 'folder', children: [
+    { name: 'src', path: 'webui/src', type: 'folder', children: [
+      { name: 'App.tsx', path: 'webui/src/App.tsx', type: 'file', modified: true },
+      { name: 'styles.css', path: 'webui/src/styles.css', type: 'file', modified: true },
+    ]},
+  ]},
+  { name: 'tests', path: 'tests', type: 'folder', children: [
+    { name: 'checkpoint.test.ts', path: 'tests/workspace/checkpoint.test.ts', type: 'file' },
+  ]},
+  { name: 'README.md', path: 'README.md', type: 'file' },
+  { name: 'package.json', path: 'package.json', type: 'file' },
+];
+
+const MOCK_SUB_AGENTS = [
+  { name: 'Coder Agent', status: 'online' as const },
+  { name: 'Reviewer Agent', status: 'thinking' as const },
+  { name: 'Tester Agent', status: 'idle' as const },
+];
 
 function chatFromSession(s: SessionRecord): ChatItem[] {
   const items: ChatItem[] = [{ id: 'user-0', kind: 'user', text: s.task }];
@@ -27,17 +87,51 @@ function chatFromSession(s: SessionRecord): ChatItem[] {
   return items;
 }
 
+function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
+  const [open, setOpen] = useState(depth < 2);
+  const isFolder = node.type === 'folder';
+  const Icon = isFolder ? Folder : node.name.endsWith('.ts') || node.name.endsWith('.tsx') ? FileCode : node.name.endsWith('.md') ? FileText : File;
+
+  return (
+    <div>
+      <button
+        type="button"
+        className={`file-tree-item ${node.modified ? 'modified' : ''}`}
+        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        onClick={() => isFolder && setOpen(!open)}
+      >
+        <Icon size={14} aria-hidden />
+        <span className="file-name">{node.name}</span>
+        {node.modified && <span className="modified-dot" aria-label="已修改" />}
+      </button>
+      {isFolder && open && node.children?.map((child) => (
+        <FileTreeNode key={child.path} node={child} depth={depth + 1} />
+      ))}
+    </div>
+  );
+}
+
+function StatusDot({ status }: { status: 'online' | 'thinking' | 'idle' }) {
+  if (status === 'online') return <CircleDot size={10} className="status-dot online" aria-hidden />;
+  if (status === 'thinking') return <Loader2 size={10} className="status-dot thinking spin" aria-hidden />;
+  return <Circle size={10} className="status-dot idle" aria-hidden />;
+}
+
 export default function App() {
   const [task, setTask] = useState('');
   const [review, setReview] = useState<SessionRecord | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [rightbarOpen, setRightbarOpen] = useState(true);
   const [model, setModel] = useState(MODELS[0]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [activeTab, setActiveTab] = useState<'editor' | 'diff' | 'terminal'>('editor');
+  const [elapsed, setElapsed] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [tokenUsage] = useState({ used: 90, total: 200 });
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsHost = import.meta.env.DEV ? 'localhost:3000' : window.location.host;
@@ -52,6 +146,16 @@ export default function App() {
       void refresh();
     }
   }, [result, status, refresh]);
+
+  useEffect(() => {
+    if (!busy) {
+      setElapsed(0);
+      return;
+    }
+    const started = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [busy]);
 
   const items = review ? chatFromSession(review) : chat;
   const agentItems = items.filter((it) => it.kind === 'agent');
@@ -133,6 +237,13 @@ export default function App() {
     }
   };
 
+  const formatElapsed = (s: number) => {
+    const h = Math.floor(s / 3600).toString().padStart(2, '0');
+    const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
+    const sec = (s % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${sec}`;
+  };
+
   return (
     <div className="app-shell">
       {hitlRequest && (
@@ -152,26 +263,111 @@ export default function App() {
         toolCallCount={toolCallCount}
       />
 
-      <div className={`app-body ${sidebarOpen ? '' : 'no-sidebar'}`}>
+      <div className={`app-body ${sidebarOpen ? '' : 'no-sidebar'} ${rightbarOpen ? '' : 'no-rightbar'}`}>
         {sidebarOpen && (
-          <SessionSidebar
-            sessions={sessions}
-            loading={loading}
-            error={error ?? detailError}
-            activeId={review?.id ?? null}
-            onRetry={() => {
-              setDetailError(null);
-              void refresh();
-            }}
-            onSelect={handleSelectSession}
-            onNew={() => setReview(null)}
-            onDelete={handleDeleteSession}
-            onCollapse={() => setSidebarOpen(false)}
-          />
+          <aside className="sidebar">
+            <div className="sidebar-head">
+              <span className="panel-label">项目</span>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm sidebar-new"
+                onClick={() => setReview(null)}
+              >
+                新建任务
+              </button>
+            </div>
+
+            <div className="sidebar-section">
+              <div className="panel-label">文件树</div>
+              <div className="file-tree">
+                {MOCK_FILE_TREE.map((node) => (
+                  <FileTreeNode key={node.path} node={node} depth={0} />
+                ))}
+              </div>
+            </div>
+
+            <div className="sidebar-section">
+              <div className="panel-label">上下文与技能</div>
+              <div className="context-card">
+                <div className="context-title">规则文件</div>
+                <div className="context-item">.cursor/rules</div>
+                <div className="context-item">AGENTS.md</div>
+              </div>
+              <div className="token-bar">
+                <div className="token-label">
+                  <span>Token 用量</span>
+                  <span>{Math.round((tokenUsage.used / tokenUsage.total) * 100)}% ({tokenUsage.used}k / {tokenUsage.total}k)</span>
+                </div>
+                <div className="token-track">
+                  <div
+                    className="token-fill"
+                    style={{ width: `${(tokenUsage.used / tokenUsage.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="sidebar-section">
+              <div className="panel-label">子 Agent</div>
+              <div className="sub-agent-list">
+                {MOCK_SUB_AGENTS.map((agent) => (
+                  <div key={agent.name} className="sub-agent-item">
+                    <StatusDot status={agent.status} />
+                    <span>{agent.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </aside>
         )}
 
         <main className="main-col">
-          <ChatTimeline items={items} end={end} connected={connected} review={Boolean(review)} />
+          <div className="tabs">
+            <button
+              type="button"
+              className={`tab ${activeTab === 'editor' ? 'active' : ''}`}
+              onClick={() => setActiveTab('editor')}
+            >
+              编辑器
+            </button>
+            <button
+              type="button"
+              className={`tab ${activeTab === 'diff' ? 'active' : ''}`}
+              onClick={() => setActiveTab('diff')}
+            >
+              Diff 审查
+            </button>
+            <button
+              type="button"
+              className={`tab ${activeTab === 'terminal' ? 'active' : ''}`}
+              onClick={() => setActiveTab('terminal')}
+            >
+              终端
+            </button>
+          </div>
+
+          <div className="main-content">
+            {activeTab === 'editor' && (
+              <div className="editor-placeholder">
+                <FileCode size={32} aria-hidden />
+                <p>选择左侧文件进行编辑</p>
+              </div>
+            )}
+            {activeTab === 'diff' && (
+              <div className="editor-placeholder">
+                <FileCode size={32} aria-hidden />
+                <p>Diff 审查功能待接入</p>
+              </div>
+            )}
+            {activeTab === 'terminal' && (
+              <div className="terminal-panel">
+                <div className="terminal-line">$ npm test</div>
+                <div className="terminal-line">✓ checkpoint.test.ts (3 tests)</div>
+                <div className="terminal-line error">✗ aes-file.test.ts (1 failed)</div>
+                <div className="terminal-line">Tests: 1 failed, 2 passed</div>
+              </div>
+            )}
+          </div>
 
           <div
             className={`composer-container ${dragOver ? 'drag-over' : ''} ${composerExpanded ? 'expanded' : 'collapsed'}`}
@@ -280,7 +476,54 @@ export default function App() {
             </form>
           </div>
         </main>
+
+        {rightbarOpen && (
+          <aside className="rightbar">
+            <div className="agent-status">
+              <div className="agent-status-icon">
+                <Bot size={18} aria-hidden />
+                {busy && <Loader2 size={14} className="spin" aria-hidden />}
+              </div>
+              <div className="agent-status-text">
+                <div className="agent-status-title">Agent 状态</div>
+                <div className="agent-status-desc">
+                  {status === 'running' ? `正在执行第 ${currentRound} 轮…` : status === 'error' ? '任务出错' : '空闲'}
+                </div>
+              </div>
+            </div>
+
+            <div className="rightbar-content">
+              <ChatTimeline items={items} end={end} connected={connected} review={Boolean(review)} />
+            </div>
+          </aside>
+        )}
       </div>
+
+      <footer className="statusbar">
+        <div className="statusbar-left">
+          <span className="statusbar-item">
+            <Cpu size={12} aria-hidden />
+            {model}
+          </span>
+          <span className="statusbar-item">
+            <GitBranch size={12} aria-hidden />
+            git:main
+          </span>
+        </div>
+        <div className="statusbar-center">
+          <span className="statusbar-item">
+            <Server size={12} aria-hidden />
+            Sandbox: Connected
+            <span className="led on" style={{ width: 6, height: 6 }} />
+          </span>
+        </div>
+        <div className="statusbar-right">
+          <span className="statusbar-item">
+            <Clock size={12} aria-hidden />
+            Run: {formatElapsed(elapsed)}
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }
