@@ -715,8 +715,8 @@ textarea {
 }
 
 .composer-container.collapsed .composer {
-  padding: 4px 12px;
-  border-radius: 28px;
+  padding: 0 12px;
+  border-radius: 22px;
 }
 
 .composer-container.expanded .composer {
@@ -727,6 +727,7 @@ textarea {
 .composer-container.collapsed .prompt-wrap {
   min-height: 40px;
   justify-content: center;
+  gap: 0;
 }
 
 .composer-container.expanded .prompt-wrap {
@@ -734,9 +735,9 @@ textarea {
 }
 
 .composer-container.collapsed .prompt-wrap textarea {
-  min-height: 22px;
-  max-height: 22px;
-  padding: 8px 0 6px;
+  min-height: 40px;
+  max-height: 40px;
+  padding: 9px 0;
   line-height: 22px;
   white-space: nowrap;
   overflow: hidden;
@@ -746,6 +747,10 @@ textarea {
 .composer-container.expanded .prompt-wrap textarea {
   min-height: 72px;
   max-height: 200px;
+}
+
+.composer-container.collapsed .composer-bottom {
+  display: none;
 }
 
 .composer-container.drag-over .composer {
