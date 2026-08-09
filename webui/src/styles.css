@@ -715,7 +715,7 @@ textarea {
 }
 
 .composer-container.collapsed .composer {
-  padding: 6px 12px;
+  padding: 4px 12px;
   border-radius: 28px;
 }
 
@@ -734,10 +734,13 @@ textarea {
 }
 
 .composer-container.collapsed .prompt-wrap textarea {
-  min-height: 24px;
-  max-height: 24px;
-  padding: 8px 0;
-  line-height: 24px;
+  min-height: 22px;
+  max-height: 22px;
+  padding: 8px 0 6px;
+  line-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .composer-container.expanded .prompt-wrap textarea {
