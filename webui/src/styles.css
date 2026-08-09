@@ -710,6 +710,38 @@ textarea {
   box-sizing: border-box;
 }
 
+.composer-container .composer {
+  transition: padding 200ms var(--ease-out), border-radius 200ms var(--ease-out);
+}
+
+.composer-container.collapsed .composer {
+  padding: 6px 12px;
+  border-radius: 28px;
+}
+
+.composer-container.expanded .composer {
+  padding: 10px 12px;
+  border-radius: 20px;
+}
+
+.composer-container.collapsed .prompt-wrap {
+  min-height: 40px;
+}
+
+.composer-container.expanded .prompt-wrap {
+  min-height: 96px;
+}
+
+.composer-container.collapsed .prompt-wrap textarea {
+  min-height: 24px;
+  max-height: 24px;
+}
+
+.composer-container.expanded .prompt-wrap textarea {
+  min-height: 72px;
+  max-height: 200px;
+}
+
 .composer-container.drag-over .composer {
   border-color: var(--accent);
   box-shadow:
@@ -802,6 +834,7 @@ textarea {
   border-radius: 0;
   padding: 0 6px;
   min-height: 96px;
+  transition: min-height 200ms var(--ease-out);
 }
 
 .prompt-wrap:focus-within {
@@ -837,6 +870,7 @@ textarea {
   resize: none;
   min-height: 72px;
   max-height: 200px;
+  transition: min-height 200ms var(--ease-out), max-height 200ms var(--ease-out);
 }
 
 .prompt-wrap textarea::placeholder {

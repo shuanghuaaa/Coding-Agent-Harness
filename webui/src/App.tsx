@@ -34,6 +34,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [model, setModel] = useState(MODELS[0]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [composerExpanded, setComposerExpanded] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
@@ -173,7 +174,7 @@ export default function App() {
           <ChatTimeline items={items} end={end} connected={connected} review={Boolean(review)} />
 
           <div
-            className={`composer-container ${dragOver ? 'drag-over' : ''}`}
+            className={`composer-container ${dragOver ? 'drag-over' : ''} ${composerExpanded ? 'expanded' : 'collapsed'}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -214,10 +215,14 @@ export default function App() {
                   value={task}
                   onChange={(e) => setTask(e.target.value)}
                   onKeyDown={handleKeyDown}
+                  onFocus={() => setComposerExpanded(true)}
+                  onBlur={() => {
+                    if (!task.trim()) setComposerExpanded(false);
+                  }}
                   placeholder={review ? '回顾模式中 — 点击左侧"＋ 新任务"返回实时模式' : '输入编码任务…（Enter 发送，Shift+Enter 换行）'}
                   disabled={busy || Boolean(review)}
                   aria-label="Coding task"
-                  rows={3}
+                  rows={composerExpanded ? 3 : 1}
                 />
 
                 <div className="composer-bottom">
