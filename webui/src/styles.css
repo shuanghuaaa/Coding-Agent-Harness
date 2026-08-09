@@ -61,20 +61,12 @@ textarea {
 .app-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 320px;
+  grid-template-columns: 260px minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
 }
 
 .app-body.no-sidebar {
-  grid-template-columns: minmax(0, 1fr) 320px;
-}
-
-.app-body.no-deck {
-  grid-template-columns: 240px minmax(0, 1fr);
-}
-
-.app-body.no-sidebar.no-deck {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -525,6 +517,10 @@ textarea {
   gap: 12px;
   padding: 2px;
   scroll-behavior: smooth;
+  max-width: 860px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .hint {
@@ -693,9 +689,85 @@ textarea {
 
 /* ---------- composer ---------- */
 
+.composer-container {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 8px 20px 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.attach-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.attach-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.attach-item button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
 .composer {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  padding: 6px 10px;
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 4px 14px rgba(28, 25, 23, 0.06);
+}
+
+.composer:focus-within {
+  border-color: rgba(87, 83, 78, 0.35);
+  box-shadow:
+    0 0 0 3px rgba(87, 83, 78, 0.08),
+    0 4px 14px rgba(28, 25, 23, 0.08);
+}
+
+.composer-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 120ms var(--ease-out), background 120ms var(--ease-out);
+}
+
+.composer-icon:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(41, 37, 36, 0.05);
+}
+
+.composer-icon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .prompt-wrap {
@@ -703,18 +775,15 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0 14px;
-  backdrop-filter: blur(8px);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0 6px;
 }
 
 .prompt-wrap:focus-within {
-  border-color: rgba(87, 83, 78, 0.35);
-  box-shadow:
-    0 0 0 1px rgba(87, 83, 78, 0.10),
-    0 0 16px rgba(87, 83, 78, 0.05);
+  border: none;
+  box-shadow: none;
 }
 
 .prompt-prefix {
@@ -727,7 +796,7 @@ textarea {
   content: '◆ ';
   color: var(--accent-2);
   margin-right: 2px;
-  text-shadow: 0 0 8px rgba(87, 83, 78, 0.20);
+  text-shadow: none;
 }
 
 .prompt-wrap input {
@@ -736,8 +805,8 @@ textarea {
   outline: none;
   background: transparent;
   color: var(--text);
-  padding: 12px 0;
-  font-size: 13px;
+  padding: 10px 0;
+  font-size: 14px;
 }
 
 .prompt-wrap input::placeholder {
@@ -746,6 +815,66 @@ textarea {
 
 .prompt-wrap input:disabled {
   opacity: 0.5;
+}
+
+.model-select {
+  position: relative;
+}
+
+.model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 120ms var(--ease-out);
+}
+
+.model-trigger:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.model-trigger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.model-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.12);
+  min-width: 140px;
+  z-index: 100;
+}
+
+.model-menu li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.model-menu li button:hover {
+  background: rgba(41, 37, 36, 0.05);
 }
 
 /* ---------- control deck ---------- */
@@ -1101,22 +1230,53 @@ textarea {
 /* ---------- responsive ---------- */
 
 @media (max-width: 1100px) {
-  .app-body,
-  .app-body.no-deck {
-    grid-template-columns: 200px minmax(0, 1fr);
+  .app-body {
+    grid-template-columns: 220px minmax(0, 1fr);
   }
 
-  .app-body.no-sidebar,
-  .app-body.no-sidebar.no-deck {
+  .app-body.no-sidebar {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .app-body .deck {
-    position: fixed;
-    right: 12px;
-    top: 64px;
-    bottom: 12px;
-    width: 320px;
-    z-index: 100;
+  .composer-container {
+    max-width: 100%;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .app-body,
+  .app-body.no-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .composer-container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .topbar-metrics {
+    display: none;
+  }
+
+  .composer {
+    flex-wrap: wrap;
+    border-radius: var(--radius);
+  }
+
+  .prompt-wrap {
+    order: -1;
+    width: 100%;
+    flex: 1 1 100%;
   }
 }

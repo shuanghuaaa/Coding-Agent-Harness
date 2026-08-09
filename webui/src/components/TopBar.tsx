@@ -1,4 +1,4 @@
-import { Activity, Bot, PanelLeft, PanelRight, Wrench } from 'lucide-react';
+import { Activity, Bot, PanelLeft, Wrench } from 'lucide-react';
 
 interface TopBarProps {
   connected: boolean;
@@ -8,9 +8,7 @@ interface TopBarProps {
   currentRound: number;
   toolCallCount: number;
   sidebarOpen: boolean;
-  deckOpen: boolean;
   onToggleSidebar: () => void;
-  onToggleDeck: () => void;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -31,9 +29,7 @@ export function TopBar({
   currentRound,
   toolCallCount,
   sidebarOpen,
-  deckOpen,
   onToggleSidebar,
-  onToggleDeck,
 }: TopBarProps) {
   const connLed = connected ? 'led on' : reconnecting ? 'led warn' : 'led off';
   const agentLed =
@@ -80,14 +76,6 @@ export function TopBar({
           <span className={agentLed} aria-hidden />
           {awaitingHITL ? '等待审批' : (STATUS_LABEL[status] ?? status)}
         </span>
-        <button
-          type="button"
-          className={`icon-btn ${deckOpen ? 'on' : ''}`}
-          onClick={onToggleDeck}
-          aria-label="切换控制台面板"
-        >
-          <PanelRight size={14} aria-hidden />
-        </button>
       </div>
     </header>
   );

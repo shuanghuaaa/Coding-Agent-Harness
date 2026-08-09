@@ -1,15 +1,16 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useSessions } from './hooks/useSessions';
 import { getSession } from './api/sessions';
 import { TopBar } from './components/TopBar';
 import { SessionSidebar } from './components/SessionSidebar';
 import { ChatTimeline, type EndSummary } from './components/ChatTimeline';
-import { ControlDeck } from './components/ControlDeck';
 import { HITLModal } from './components/HITLModal';
+import { Paperclip, Mic, ChevronDown } from 'lucide-react';
 import type { ChatItem, SessionRecord } from './types';
 
 const BUSY = new Set(['running']);
+const MODELS = ['K2.5', 'K2.5 Agent', 'K1.5'];
 
 function chatFromSession(s: SessionRecord): ChatItem[] {
   const items: ChatItem[] = [{ id: 'user-0', kind: 'user', text: s.task }];
@@ -31,7 +32,10 @@ export default function App() {
   const [review, setReview] = useState<SessionRecord | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [deckOpen, setDeckOpen] = useState(true);
+  const [model, setModel] = useState(MODELS[0]);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsHost = import.meta.env.DEV ? 'localhost:3000' : window.location.host;
@@ -49,9 +53,6 @@ export default function App() {
 
   const items = review ? chatFromSession(review) : chat;
   const agentItems = items.filter((it) => it.kind === 'agent');
-  const feedbackHistory = agentItems
-    .filter((it) => it.feedbackStatus)
-    .map((it) => ({ round: it.round!, status: it.feedbackStatus! }));
   const currentRound = agentItems.length;
   const toolCallCount = agentItems.reduce((n, it) => n + (it.actions?.length ?? 0), 0);
 
@@ -63,9 +64,10 @@ export default function App() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (task.trim() && !busy && !review) {
+    if ((task.trim() || attachedFiles.length > 0) && !busy && !review) {
       sendTask(task.trim());
       setTask('');
+      setAttachedFiles([]);
     }
   };
 
@@ -83,8 +85,18 @@ export default function App() {
     if (review?.id === id) setReview(null);
   };
 
-  const jumpToRound = (round: number) => {
-    document.getElementById(`round-${round}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const handleAttach = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    setAttachedFiles((prev) => [...prev, ...files]);
+    e.target.value = '';
+  };
+
+  const removeFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -105,12 +117,10 @@ export default function App() {
         currentRound={currentRound}
         toolCallCount={toolCallCount}
         sidebarOpen={sidebarOpen}
-        deckOpen={deckOpen}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
-        onToggleDeck={() => setDeckOpen((v) => !v)}
       />
 
-      <div className={`app-body ${sidebarOpen ? '' : 'no-sidebar'} ${deckOpen ? '' : 'no-deck'}`}>
+      <div className={`app-body ${sidebarOpen ? '' : 'no-sidebar'}`}>
         {sidebarOpen && (
           <SessionSidebar
             sessions={sessions}
@@ -129,45 +139,105 @@ export default function App() {
 
         <main className="main-col">
           <ChatTimeline items={items} end={end} connected={connected} review={Boolean(review)} />
-          <form className="composer" onSubmit={handleSubmit}>
-            <div className="prompt-wrap">
-              <span className="prompt-prefix" aria-hidden>
-                &gt;
-              </span>
-              <input
-                type="text"
-                value={task}
-                onChange={(e) => setTask(e.target.value)}
-                placeholder={review ? '回顾模式中 — 点击左侧"＋ 新任务"返回实时模式' : '输入编码任务…'}
-                disabled={busy || Boolean(review)}
-                aria-label="Coding task"
-              />
-            </div>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={busy || !connected || Boolean(review)}
-            >
-              发送
-            </button>
-            {busy && (
-              <button type="button" className="btn btn-danger" onClick={cancel}>
-                取消
-              </button>
-            )}
-          </form>
-        </main>
 
-        {deckOpen && (
-          <ControlDeck
-            status={review ? 'review' : status}
-            awaitingHITL={Boolean(hitlRequest)}
-            agentItems={agentItems}
-            feedbackHistory={feedbackHistory}
-            currentRound={currentRound}
-            onJumpToRound={jumpToRound}
-          />
-        )}
+          <div className="composer-container">
+            {attachedFiles.length > 0 && (
+              <div className="attach-list">
+                {attachedFiles.map((f, i) => (
+                  <span key={i} className="attach-item">
+                    {f.name}
+                    <button type="button" onClick={() => removeFile(i)} aria-label="移除文件">
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <form className="composer" onSubmit={handleSubmit}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                hidden
+                onChange={handleFiles}
+              />
+              <button
+                type="button"
+                className="composer-icon"
+                onClick={handleAttach}
+                disabled={busy || Boolean(review)}
+                aria-label="上传文件"
+              >
+                <Paperclip size={16} aria-hidden />
+              </button>
+
+              <div className="prompt-wrap">
+                <span className="prompt-prefix" aria-hidden>
+                  &gt;
+                </span>
+                <input
+                  type="text"
+                  value={task}
+                  onChange={(e) => setTask(e.target.value)}
+                  placeholder={review ? '回顾模式中 — 点击左侧"＋ 新任务"返回实时模式' : '输入编码任务…'}
+                  disabled={busy || Boolean(review)}
+                  aria-label="Coding task"
+                />
+              </div>
+
+              <button
+                type="button"
+                className="composer-icon"
+                disabled={busy || Boolean(review)}
+                aria-label="语音输入"
+              >
+                <Mic size={16} aria-hidden />
+              </button>
+
+              <div className="model-select">
+                <button
+                  type="button"
+                  className="model-trigger"
+                  onClick={() => setModelMenuOpen((v) => !v)}
+                  disabled={busy || Boolean(review)}
+                >
+                  {model} <ChevronDown size={12} aria-hidden />
+                </button>
+                {modelMenuOpen && (
+                  <ul className="model-menu">
+                    {MODELS.map((m) => (
+                      <li key={m}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModel(m);
+                            setModelMenuOpen(false);
+                          }}
+                        >
+                          {m}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={busy || !connected || Boolean(review) || (!task.trim() && attachedFiles.length === 0)}
+              >
+                发送
+              </button>
+              {busy && (
+                <button type="button" className="btn btn-danger" onClick={cancel}>
+                  取消
+                </button>
+              )}
+            </form>
+          </div>
+        </main>
       </div>
     </div>
   );
