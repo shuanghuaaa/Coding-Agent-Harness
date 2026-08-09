@@ -128,53 +128,46 @@ export default function App() {
         )}
 
         <main className="main-col">
-          <div className="chat-scroll">
-            <div className="chat-container">
-              <ChatTimeline items={items} end={end} connected={connected} review={Boolean(review)} />
+          <ChatTimeline items={items} end={end} connected={connected} review={Boolean(review)} />
+          <form className="composer" onSubmit={handleSubmit}>
+            <div className="prompt-wrap">
+              <span className="prompt-prefix" aria-hidden>
+                &gt;
+              </span>
+              <input
+                type="text"
+                value={task}
+                onChange={(e) => setTask(e.target.value)}
+                placeholder={review ? '回顾模式中 — 点击左侧"＋ 新任务"返回实时模式' : '输入编码任务…'}
+                disabled={busy || Boolean(review)}
+                aria-label="Coding task"
+              />
             </div>
-          </div>
-
-          {deckOpen && (
-            <ControlDeck
-              status={review ? 'review' : status}
-              awaitingHITL={Boolean(hitlRequest)}
-              agentItems={agentItems}
-              feedbackHistory={feedbackHistory}
-              currentRound={currentRound}
-              onJumpToRound={jumpToRound}
-            />
-          )}
-
-          <div className="composer-container">
-            <form className="composer" onSubmit={handleSubmit}>
-              <div className="prompt-wrap">
-                <span className="prompt-prefix" aria-hidden>
-                  &gt;
-                </span>
-                <input
-                  type="text"
-                  value={task}
-                  onChange={(e) => setTask(e.target.value)}
-                  placeholder={review ? '回顾模式中 — 点击左侧"＋ 新任务"返回实时模式' : '输入编码任务…'}
-                  disabled={busy || Boolean(review)}
-                  aria-label="Coding task"
-                />
-              </div>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={busy || !connected || Boolean(review)}
-              >
-                发送
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={busy || !connected || Boolean(review)}
+            >
+              发送
+            </button>
+            {busy && (
+              <button type="button" className="btn btn-danger" onClick={cancel}>
+                取消
               </button>
-              {busy && (
-                <button type="button" className="btn btn-danger" onClick={cancel}>
-                  取消
-                </button>
-              )}
-            </form>
-          </div>
+            )}
+          </form>
         </main>
+
+        {deckOpen && (
+          <ControlDeck
+            status={review ? 'review' : status}
+            awaitingHITL={Boolean(hitlRequest)}
+            agentItems={agentItems}
+            feedbackHistory={feedbackHistory}
+            currentRound={currentRound}
+            onJumpToRound={jumpToRound}
+          />
+        )}
       </div>
     </div>
   );

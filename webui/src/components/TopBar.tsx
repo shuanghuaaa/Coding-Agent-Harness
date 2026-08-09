@@ -1,4 +1,4 @@
-import { Activity, Bot, PanelBottom, PanelLeft, Wrench } from 'lucide-react';
+import { Activity, Bot, PanelLeft, PanelRight, Wrench } from 'lucide-react';
 
 interface TopBarProps {
   connected: boolean;
@@ -86,7 +86,7 @@ export function TopBar({
           onClick={onToggleDeck}
           aria-label="切换控制台面板"
         >
-          <PanelBottom size={14} aria-hidden />
+          <PanelRight size={14} aria-hidden />
         </button>
       </div>
     </header>
