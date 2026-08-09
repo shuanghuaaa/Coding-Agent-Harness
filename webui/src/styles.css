@@ -61,52 +61,13 @@ textarea {
 .app-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 52px 260px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
 }
 
 .app-body.no-sidebar {
-  grid-template-columns: 52px minmax(0, 1fr);
-}
-
-.rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 0;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  backdrop-filter: blur(8px);
-  align-self: start;
-  position: sticky;
-  top: 12px;
-}
-
-.rail-item {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: color 120ms var(--ease-out), background 120ms var(--ease-out);
-}
-
-.rail-item:hover {
-  color: var(--text);
-  background: rgba(41, 37, 36, 0.05);
-}
-
-.rail-item.active {
-  color: var(--accent);
-  background: rgba(41, 37, 36, 0.08);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .main-col {
@@ -750,13 +711,12 @@ textarea {
 }
 
 .composer-container .composer {
-  transition: padding 200ms var(--ease-out), border-radius 200ms var(--ease-out), align-items 200ms var(--ease-out);
+  transition: padding 200ms var(--ease-out), border-radius 200ms var(--ease-out);
 }
 
 .composer-container.collapsed .composer {
-  padding: 2px 12px;
+  padding: 0 12px;
   border-radius: 22px;
-  align-items: center;
 }
 
 .composer-container.expanded .composer {
@@ -768,11 +728,6 @@ textarea {
   min-height: 40px;
   justify-content: center;
   gap: 0;
-}
-
-.composer-container.collapsed .composer-rail {
-  padding-top: 0;
-  justify-content: center;
 }
 
 .composer-container.expanded .prompt-wrap {
@@ -796,10 +751,6 @@ textarea {
 
 .composer-container.collapsed .composer-bottom {
   display: none;
-}
-
-.composer-container.collapsed .composer-send {
-  margin-top: 0;
 }
 
 .composer-container.drag-over .composer {
@@ -858,27 +809,20 @@ textarea {
     0 4px 14px rgba(28, 25, 23, 0.08);
 }
 
-.composer-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex-shrink: 0;
-  padding-top: 2px;
-}
-
 .composer-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   background: transparent;
   border: none;
   color: var(--text-dim);
   cursor: pointer;
   transition: color 120ms var(--ease-out), background 120ms var(--ease-out);
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .composer-icon:hover:not(:disabled) {
@@ -956,16 +900,8 @@ textarea {
 }
 
 .composer-send {
-  margin-top: 2px;
+  margin-top: 4px;
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  min-height: 36px;
-  padding: 0;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .model-select {
