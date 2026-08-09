@@ -726,6 +726,7 @@ textarea {
 
 .composer-container.collapsed .prompt-wrap {
   min-height: 40px;
+  justify-content: center;
 }
 
 .composer-container.expanded .prompt-wrap {

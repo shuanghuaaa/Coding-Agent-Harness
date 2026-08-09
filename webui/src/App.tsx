@@ -219,7 +219,7 @@ export default function App() {
                   onBlur={() => {
                     if (!task.trim()) setComposerExpanded(false);
                   }}
-                  placeholder={review ? '回顾模式中 — 点击左侧"＋ 新任务"返回实时模式' : '输入编码任务…（Enter 发送，Shift+Enter 换行）'}
+                  placeholder={review ? '回顾模式 — 点击左侧"＋ 新任务"返回' : '尽管问你的编码任务'}
                   disabled={busy || Boolean(review)}
                   aria-label="Coding task"
                   rows={composerExpanded ? 3 : 1}
