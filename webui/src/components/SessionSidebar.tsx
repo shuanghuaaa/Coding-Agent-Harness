@@ -1,4 +1,4 @@
-import { History, Trash2 } from 'lucide-react';
+import { History, Trash2, PanelLeftClose } from 'lucide-react';
 import type { SessionSummary } from '../types';
 
 interface SessionSidebarProps {
@@ -10,6 +10,7 @@ interface SessionSidebarProps {
   onSelect: (id: number) => void;
   onNew: () => void;
   onDelete: (id: number) => void;
+  onCollapse: () => void;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -46,6 +47,7 @@ export function SessionSidebar({
   onSelect,
   onNew,
   onDelete,
+  onCollapse,
 }: SessionSidebarProps) {
   return (
     <aside className="sidebar panel">
@@ -54,10 +56,19 @@ export function SessionSidebar({
           <History size={12} aria-hidden />
           会话历史
         </span>
-        <button type="button" className="btn btn-primary btn-sm" onClick={onNew}>
-          ＋ 新任务
+        <button
+          type="button"
+          className="icon-btn sidebar-collapse"
+          onClick={onCollapse}
+          aria-label="收起会话历史"
+        >
+          <PanelLeftClose size={14} aria-hidden />
         </button>
       </div>
+
+      <button type="button" className="btn btn-primary btn-sm sidebar-new" onClick={onNew}>
+        ＋ 新任务
+      </button>
 
       {loading && <div className="sidebar-note">加载中…</div>}
 

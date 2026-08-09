@@ -34,6 +34,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [model, setModel] = useState(MODELS[0]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
@@ -89,14 +90,46 @@ export default function App() {
     fileInputRef.current?.click();
   };
 
+  const addFiles = (files: File[]) => {
+    setAttachedFiles((prev) => [...prev, ...files]);
+  };
+
   const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    setAttachedFiles((prev) => [...prev, ...files]);
+    addFiles(files);
     e.target.value = '';
   };
 
   const removeFile = (index: number) => {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!busy && !review) setDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    if (busy || review) return;
+    const files = Array.from(e.dataTransfer.files ?? []);
+    addFiles(files);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
   };
 
   return (
@@ -116,8 +149,6 @@ export default function App() {
         awaitingHITL={Boolean(hitlRequest)}
         currentRound={currentRound}
         toolCallCount={toolCallCount}
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen((v) => !v)}
       />
 
       <div className={`app-body ${sidebarOpen ? '' : 'no-sidebar'}`}>
@@ -134,13 +165,19 @@ export default function App() {
             onSelect={handleSelectSession}
             onNew={() => setReview(null)}
             onDelete={handleDeleteSession}
+            onCollapse={() => setSidebarOpen(false)}
           />
         )}
 
         <main className="main-col">
           <ChatTimeline items={items} end={end} connected={connected} review={Boolean(review)} />
 
-          <div className="composer-container">
+          <div
+            className={`composer-container ${dragOver ? 'drag-over' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             {attachedFiles.length > 0 && (
               <div className="attach-list">
                 {attachedFiles.map((f, i) => (
@@ -173,16 +210,14 @@ export default function App() {
               </button>
 
               <div className="prompt-wrap">
-                <span className="prompt-prefix" aria-hidden>
-                  &gt;
-                </span>
-                <input
-                  type="text"
+                <textarea
                   value={task}
                   onChange={(e) => setTask(e.target.value)}
-                  placeholder={review ? '回顾模式中 — 点击左侧"＋ 新任务"返回实时模式' : '输入编码任务…'}
+                  onKeyDown={handleKeyDown}
+                  placeholder={review ? '回顾模式中 — 点击左侧"＋ 新任务"返回实时模式' : '输入编码任务…（Enter 发送，Shift+Enter 换行）'}
                   disabled={busy || Boolean(review)}
                   aria-label="Coding task"
+                  rows={3}
                 />
               </div>
 
@@ -195,6 +230,21 @@ export default function App() {
                 <Mic size={16} aria-hidden />
               </button>
 
+              <button
+                type="submit"
+                className="btn btn-primary composer-send"
+                disabled={busy || !connected || Boolean(review) || (!task.trim() && attachedFiles.length === 0)}
+              >
+                发送
+              </button>
+              {busy && (
+                <button type="button" className="btn btn-danger" onClick={cancel}>
+                  取消
+                </button>
+              )}
+            </form>
+
+            <div className="composer-footer">
               <div className="model-select">
                 <button
                   type="button"
@@ -222,20 +272,7 @@ export default function App() {
                   </ul>
                 )}
               </div>
-
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={busy || !connected || Boolean(review) || (!task.trim() && attachedFiles.length === 0)}
-              >
-                发送
-              </button>
-              {busy && (
-                <button type="button" className="btn btn-danger" onClick={cancel}>
-                  取消
-                </button>
-              )}
-            </form>
+            </div>
           </div>
         </main>
       </div>

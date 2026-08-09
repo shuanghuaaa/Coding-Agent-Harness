@@ -1,4 +1,4 @@
-import { Activity, Bot, PanelLeft, Wrench } from 'lucide-react';
+import { Activity, Bot, Wrench } from 'lucide-react';
 
 interface TopBarProps {
   connected: boolean;
@@ -7,8 +7,6 @@ interface TopBarProps {
   awaitingHITL: boolean;
   currentRound: number;
   toolCallCount: number;
-  sidebarOpen: boolean;
-  onToggleSidebar: () => void;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -28,8 +26,6 @@ export function TopBar({
   awaitingHITL,
   currentRound,
   toolCallCount,
-  sidebarOpen,
-  onToggleSidebar,
 }: TopBarProps) {
   const connLed = connected ? 'led on' : reconnecting ? 'led warn' : 'led off';
   const agentLed =
@@ -43,14 +39,6 @@ export function TopBar({
 
   return (
     <header className="topbar panel">
-      <button
-        type="button"
-        className={`icon-btn ${sidebarOpen ? 'on' : ''}`}
-        onClick={onToggleSidebar}
-        aria-label="切换会话历史栏"
-      >
-        <PanelLeft size={14} aria-hidden />
-      </button>
       <div className="brand">
         <span className="brand-logo" aria-hidden>
           <Bot size={14} />
