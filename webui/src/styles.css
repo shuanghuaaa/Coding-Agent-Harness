@@ -795,8 +795,8 @@ textarea {
 .prompt-wrap {
   flex: 1;
   display: flex;
-  align-items: stretch;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   background: transparent;
   border: none;
   border-radius: 0;
@@ -830,7 +830,7 @@ textarea {
   outline: none;
   background: transparent;
   color: var(--text);
-  padding: 10px 0;
+  padding: 10px 0 0;
   font-size: 14px;
   font-family: inherit;
   line-height: 1.5;
@@ -847,17 +847,16 @@ textarea {
   opacity: 0.5;
 }
 
+.composer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 4px;
+}
+
 .composer-send {
   margin-top: 4px;
   flex-shrink: 0;
-}
-
-.composer-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
-  padding: 0 4px;
 }
 
 .model-select {
@@ -1324,7 +1323,7 @@ textarea {
     min-height: 72px;
   }
 
-  .composer-footer {
+  .composer-bottom {
     justify-content: flex-start;
   }
 }

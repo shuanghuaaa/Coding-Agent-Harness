@@ -219,6 +219,36 @@ export default function App() {
                   aria-label="Coding task"
                   rows={3}
                 />
+
+                <div className="composer-bottom">
+                  <div className="model-select">
+                    <button
+                      type="button"
+                      className="model-trigger"
+                      onClick={() => setModelMenuOpen((v) => !v)}
+                      disabled={busy || Boolean(review)}
+                    >
+                      {model} <ChevronDown size={12} aria-hidden />
+                    </button>
+                    {modelMenuOpen && (
+                      <ul className="model-menu">
+                        {MODELS.map((m) => (
+                          <li key={m}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setModel(m);
+                                setModelMenuOpen(false);
+                              }}
+                            >
+                              {m}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <button
@@ -243,36 +273,6 @@ export default function App() {
                 </button>
               )}
             </form>
-
-            <div className="composer-footer">
-              <div className="model-select">
-                <button
-                  type="button"
-                  className="model-trigger"
-                  onClick={() => setModelMenuOpen((v) => !v)}
-                  disabled={busy || Boolean(review)}
-                >
-                  {model} <ChevronDown size={12} aria-hidden />
-                </button>
-                {modelMenuOpen && (
-                  <ul className="model-menu">
-                    {MODELS.map((m) => (
-                      <li key={m}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setModel(m);
-                            setModelMenuOpen(false);
-                          }}
-                        >
-                          {m}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
           </div>
         </main>
       </div>
