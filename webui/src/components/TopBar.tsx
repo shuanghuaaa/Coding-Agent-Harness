@@ -1,4 +1,4 @@
-import { Activity, PanelLeft, PanelRight, Wrench } from 'lucide-react';
+import { Activity, Bot, PanelLeft, PanelRight, Wrench } from 'lucide-react';
 
 interface TopBarProps {
   connected: boolean;
@@ -56,7 +56,10 @@ export function TopBar({
         <PanelLeft size={14} aria-hidden />
       </button>
       <div className="brand">
-        CODING AGENT <span>HARNESS</span>
+        <span className="brand-logo" aria-hidden>
+          <Bot size={14} />
+        </span>
+        智软训练营 <span>Agent Harness</span>
       </div>
       <div className="topbar-metrics">
         <span className="metric">
