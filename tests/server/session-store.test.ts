@@ -56,4 +56,28 @@ describe('SessionStore', () => {
     expect(store.get(id)).toBeUndefined();
     expect(store.delete(id)).toBe(false);
   });
+
+  it('update rewrites status rounds and data for existing id', () => {
+    const id = store.save({
+      task: 't1',
+      status: 'completed',
+      rounds: 1,
+      data: { progressEvents: [], feedbackHistory: [], messages: [] },
+    });
+    const ok = store.update(id, {
+      task: 't1',
+      status: 'completed',
+      rounds: 3,
+      data: {
+        progressEvents: [],
+        feedbackHistory: [],
+        messages: [{ role: 'user', content: 'again' }],
+      },
+    });
+    expect(ok).toBe(true);
+    const row = store.get(id)!;
+    expect(row.rounds).toBe(3);
+    expect(row.data.messages[0].content).toBe('again');
+    expect(store.update(99999, { task: 'x', status: 'error', rounds: 0, data: { progressEvents: [], feedbackHistory: [], messages: [] } })).toBe(false);
+  });
 });

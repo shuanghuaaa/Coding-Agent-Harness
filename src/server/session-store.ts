@@ -79,6 +79,13 @@ export class SessionStore {
     return this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id).changes > 0;
   }
 
+  update(id: number, input: NewSession): boolean {
+    const info = this.db
+      .prepare('UPDATE sessions SET task = ?, status = ?, rounds = ?, data = ? WHERE id = ?')
+      .run(input.task, input.status, input.rounds, JSON.stringify(input.data), id);
+    return info.changes > 0;
+  }
+
   close(): void {
     this.db.close();
   }
