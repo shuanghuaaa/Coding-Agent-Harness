@@ -9,8 +9,9 @@ import { FeedbackValidator } from '../../src/feedback/validator';
 import { FeedbackInjector } from '../../src/feedback/injector';
 import { ROLE_DEFINITIONS } from '../../src/orchestration/roles';
 import type { AgentRole } from '../../src/orchestration/roles';
-import type { LLMResponse } from '../../src/agent/types';
+import type { Message, LLMResponse } from '../../src/agent/types';
 import type { ProgressCallback } from '../../src/agent/loop';
+import type { ToolDefinition } from '../../src/llm/provider';
 
 function artifactResponse(payload: Record<string, unknown>): LLMResponse {
   return {
@@ -20,8 +21,22 @@ function artifactResponse(payload: Record<string, unknown>): LLMResponse {
   };
 }
 
-function makeLoopFactory(responses: LLMResponse[]) {
-  const mockLLM = new MockLLM(responses);
+class SlowMockLLM extends MockLLM {
+  constructor(
+    responses: LLMResponse[],
+    private delayMs: number,
+  ) {
+    super(responses);
+  }
+
+  override async chat(messages: Message[], tools?: ToolDefinition[]): Promise<LLMResponse> {
+    await new Promise((resolve) => setTimeout(resolve, this.delayMs));
+    return super.chat(messages, tools);
+  }
+}
+
+function makeLoopFactory(responses: LLMResponse[], llm?: MockLLM) {
+  const mockLLM = llm ?? new MockLLM(responses);
 
   const createLoop = (role: AgentRole, onProgress: ProgressCallback) =>
     new AgentLoop({
@@ -103,5 +118,24 @@ describe('Orchestrator', () => {
     expect(result.stages.filter((s) => s.role === 'tester' && s.testStatus === 'fail')).toHaveLength(
       3,
     );
+  });
+
+  it('cancel mid-run returns cancelled', async () => {
+    const slowLLM = new SlowMockLLM(
+      [
+        artifactResponse({ summary: 'Still working' }),
+        artifactResponse({ summary: 'Should not reach' }),
+      ],
+      50,
+    );
+    const { createLoop } = makeLoopFactory([], slowLLM);
+
+    const orch = new Orchestrator({ createLoop, maxRetries: 2 });
+    const runPromise = orch.run('Cancel me');
+    orch.cancel();
+    const result = await runPromise;
+
+    expect(result.status).toBe('cancelled');
+    expect(result.stages).toHaveLength(0);
   });
 });

@@ -120,6 +120,14 @@ export class Orchestrator {
           return { status: 'cancelled', stages, retries, messages, progressEvents };
         }
 
+        if (loopResult.status !== 'completed') {
+          messages = loopResult.messages;
+          const rolesFailed = idleRoles();
+          rolesFailed[role] = 'error';
+          emitStatus({ phase: 'failed', roles: rolesFailed });
+          return { status: 'failed', stages, retries, messages, progressEvents };
+        }
+
         messages = loopResult.messages;
         const changedFiles = getChangedFiles();
         const content = lastAssistantContent(loopResult.messages);
@@ -130,11 +138,6 @@ export class Orchestrator {
         if (gate.action === 'retry_coder') {
           const rolesAfter = idleRoles();
           rolesAfter[role] = 'blocked';
-          emitStatus({
-            phase: 'retry',
-            roles: rolesAfter,
-            lastGate: { from: role, reason: gate.reason },
-          });
 
           if (retryCount >= this.deps.maxRetries) {
             emitStatus({ phase: 'failed', roles: rolesAfter, lastGate: { from: role, reason: gate.reason } });
@@ -143,6 +146,11 @@ export class Orchestrator {
 
           retryCount++;
           retries++;
+          emitStatus({
+            phase: 'retry',
+            roles: rolesAfter,
+            lastGate: { from: role, reason: gate.reason },
+          });
           messages = [
             ...messages,
             { role: 'user', content: `Gate rejected (${role}): ${gate.reason}. Please fix and resubmit.` },
