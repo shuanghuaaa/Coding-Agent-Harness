@@ -60,16 +60,16 @@ describe('AgentLoop', () => {
     expect(result.rounds).toBe(10);
   });
 
-  it('returns cancelled when cancel() is called', async () => {
+  it('resets cancelled flag at start of each run', async () => {
     const mockLLM = new MockLLM([
-      { content: 'Working...', tool_calls: [], finish_reason: 'stop' },
+      { content: 'Done.', tool_calls: [], finish_reason: 'stop' },
     ]);
 
     const loop = makeBasicLoop(mockLLM);
     loop.cancel();
     const result = await loop.run('Task');
 
-    expect(result.status).toBe('cancelled');
+    expect(result.status).toBe('completed');
   });
 
   it('returns cancelled when cancel() called mid-loop', async () => {

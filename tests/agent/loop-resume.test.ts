@@ -33,4 +33,22 @@ describe('AgentLoop resume', () => {
     expect(users[users.length - 1]).toBe('follow up');
     expect(result.messages.some((m) => m.role === 'system')).toBe(true);
   });
+
+  it('includes agentRole in onProgress when set in options', async () => {
+    const progressEvents: Array<{ agentRole?: string }> = [];
+    const loop = new AgentLoop({
+      llm: new MockLLM([{ content: 'ok', tool_calls: [], finish_reason: 'stop' }]),
+      dispatcher: new ToolDispatcher([]),
+      contextBuilder: new ContextBuilder({ systemPrompt: 'sys', configRules: [], memories: [] }),
+      stopCondition: new StopCondition({ maxRounds: 5 }),
+      validator: new FeedbackValidator(),
+      injector: new FeedbackInjector(),
+      onProgress: (event) => progressEvents.push(event),
+    });
+
+    await loop.run('task', { agentRole: 'reviewer' });
+
+    expect(progressEvents.length).toBeGreaterThan(0);
+    expect(progressEvents.every((e) => e.agentRole === 'reviewer')).toBe(true);
+  });
 });

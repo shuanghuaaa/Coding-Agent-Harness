@@ -73,6 +73,7 @@ export class AgentLoop {
   }
 
   async run(task: string, options?: RunOptions): Promise<RunResult> {
+    this.cancelled = false;
     this.feedbackHistory = [];
     this.currentAgentRole = options?.agentRole;
     const prior = (options?.priorMessages ?? []).filter((m) => m.role !== 'system');
