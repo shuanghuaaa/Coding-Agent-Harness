@@ -110,7 +110,7 @@ export class HarnessServer {
         res.json(readWorkspaceFile(this.workspaceRoot, p));
       } catch (err) {
         const msg = String(err);
-        const status = /traversal|blocked/i.test(msg) ? 400
+        const status = /traversal|blocked|not a file/i.test(msg) ? 400
           : /not found/i.test(msg) ? 404
           : /too large|binary/i.test(msg) ? 415
           : 500;
