@@ -28,6 +28,12 @@ export interface RoundProgress {
   assistantContent: string;
   actions: Array<{ tool: string; result: string }>;
   feedbackStatus?: string;
+  agentRole?: string;
+}
+
+export interface RunOptions {
+  priorMessages?: Message[];
+  agentRole?: string;
 }
 
 export type ProgressCallback = (event: RoundProgress) => void;
@@ -55,6 +61,7 @@ export class AgentLoop {
   private messages: Message[] = [];
   private feedbackHistory: Array<{ round: number; status: string }> = [];
   private cancelled = false;
+  private currentAgentRole?: string;
   private feedbackToolNames: string[];
 
   /** Exposed for HITL-aware server to rebuild with a hitlCallback */
@@ -65,8 +72,12 @@ export class AgentLoop {
     this.feedbackToolNames = config.feedbackToolNames ?? ['run_test'];
   }
 
-  async run(task: string): Promise<RunResult> {
+  async run(task: string, options?: RunOptions): Promise<RunResult> {
+    this.feedbackHistory = [];
+    this.currentAgentRole = options?.agentRole;
+    const prior = (options?.priorMessages ?? []).filter((m) => m.role !== 'system');
     this.messages = this.config.contextBuilder.build([
+      ...prior,
       { role: 'user', content: task },
     ]);
 
@@ -189,6 +200,7 @@ export class AgentLoop {
       assistantContent,
       actions,
       feedbackStatus,
+      agentRole: this.currentAgentRole,
     });
   }
 
