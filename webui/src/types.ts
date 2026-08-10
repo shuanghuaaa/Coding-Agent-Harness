@@ -1,5 +1,17 @@
+export type AgentRole = 'coder' | 'reviewer' | 'tester';
+
+export type RoleStatus = 'idle' | 'running' | 'waiting' | 'done' | 'blocked' | 'error';
+
+export interface OrchestratorStatus {
+  phase: string;
+  roles: Record<AgentRole, RoleStatus>;
+  retryCount: number;
+  maxRetries: number;
+  lastGate?: { from: string; reason: string };
+}
+
 export interface WSMessage {
-  type: 'status' | 'result' | 'hitl_request' | 'log' | 'progress';
+  type: 'status' | 'result' | 'hitl_request' | 'log' | 'progress' | 'orchestrator_status';
   payload: unknown;
 }
 
@@ -8,6 +20,7 @@ export interface RoundProgress {
   assistantContent: string;
   actions: Array<{ tool: string; result: string }>;
   feedbackStatus?: string;
+  agentRole?: string;
 }
 
 export interface ChatItem {
@@ -18,6 +31,19 @@ export interface ChatItem {
   round?: number;
   actions?: Array<{ tool: string; result: string }>;
   feedbackStatus?: string;
+  agentRole?: string;
+}
+
+export interface WorkspaceFile {
+  path: string;
+  content: string;
+  size: number;
+}
+
+export interface CheckpointDiffPayload {
+  id: string;
+  files: string[];
+  patch: string;
 }
 
 export interface AgentResult {
@@ -25,6 +51,14 @@ export interface AgentResult {
   rounds: number;
   messages: Array<{ role: string; content: string; tool_calls?: unknown[] }>;
   feedbackHistory: Array<{ round: number; status: string }>;
+  checkpoint?: CheckpointDiffPayload | null;
+}
+
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  type: 'file' | 'folder';
+  children?: FileTreeNode[];
 }
 
 export interface HITLRequestPayload {
