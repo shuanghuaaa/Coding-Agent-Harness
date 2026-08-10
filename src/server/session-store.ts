@@ -86,6 +86,23 @@ export class SessionStore {
     return info.changes > 0;
   }
 
+  /** Save new session, or update existing by id preserving its original task. */
+  saveOrUpdate(sessionId: number | undefined, input: NewSession): number {
+    if (sessionId !== undefined) {
+      const existing = this.get(sessionId);
+      if (existing) {
+        const ok = this.update(sessionId, {
+          task: existing.task,
+          status: input.status,
+          rounds: input.rounds,
+          data: input.data,
+        });
+        if (ok) return sessionId;
+      }
+    }
+    return this.save(input);
+  }
+
   close(): void {
     this.db.close();
   }

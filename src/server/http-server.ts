@@ -267,17 +267,15 @@ export class HarnessServer {
     rounds: number,
     data: SessionData,
     sessionId?: number,
-  ): void {
-    if (!this.sessionStore) return;
+  ): number | undefined {
+    if (!this.sessionStore) return undefined;
     try {
-      if (sessionId !== undefined && this.sessionStore.update(sessionId, { task, status, rounds, data })) {
-        logger.info('Session updated', { id: sessionId, status, rounds });
-        return;
-      }
-      const id = this.sessionStore.save({ task, status, rounds, data });
-      logger.info('Session saved', { id, status, rounds });
+      const id = this.sessionStore.saveOrUpdate(sessionId, { task, status, rounds, data });
+      logger.info(sessionId !== undefined ? 'Session updated' : 'Session saved', { id, status, rounds });
+      return id;
     } catch (err) {
       logger.error('Failed to save session', { error: String(err) });
+      return undefined;
     }
   }
 
@@ -286,8 +284,8 @@ export class HarnessServer {
     result: RunResult,
     progressEvents: RoundProgress[],
     sessionId?: number,
-  ): void {
-    this.persistSession(
+  ): number | undefined {
+    return this.persistSession(
       task,
       result.status,
       result.rounds,
@@ -304,8 +302,8 @@ export class HarnessServer {
     task: string,
     result: OrchestrationResult,
     sessionId?: number,
-  ): void {
-    this.persistSession(
+  ): number | undefined {
+    return this.persistSession(
       task,
       result.status,
       result.progressEvents.length,
@@ -375,7 +373,7 @@ export class HarnessServer {
       try {
         const result = await loopWithHITL.run(task, { priorMessages });
         logger.info('Agent task completed', { status: result.status, rounds: result.rounds });
-        this.saveSession(task, result, progressEvents, sessionId);
+        const savedSessionId = this.saveSession(task, result, progressEvents, sessionId);
         const checkpoint = this.buildDiff(cp);
 
         if (ws.readyState === WebSocket.OPEN) {
@@ -387,12 +385,13 @@ export class HarnessServer {
               messages: result.messages,
               feedbackHistory: result.feedbackHistory,
               checkpoint,
+              ...(savedSessionId !== undefined ? { sessionId: savedSessionId } : {}),
             },
           }));
         }
       } catch (err) {
         logger.error('Agent task failed', { error: String(err) });
-        this.saveSession(
+        const savedSessionId = this.saveSession(
           task,
           { status: 'error', rounds: progressEvents.length, messages: priorMessages, feedbackHistory: [] },
           progressEvents,
@@ -413,6 +412,7 @@ export class HarnessServer {
                 messages: priorMessages,
                 feedbackHistory: [],
                 checkpoint,
+                ...(savedSessionId !== undefined ? { sessionId: savedSessionId } : {}),
               },
             }));
           }
@@ -444,6 +444,10 @@ export class HarnessServer {
       const allTools = this.loop.config.dispatcher.listTools();
       const orchestrator = new Orchestrator({
         maxRetries: resolvedMaxRetries,
+        getChangedFiles: () => {
+          const d = this.buildDiff(cp);
+          return d?.files ?? [];
+        },
         onStatus: (status) => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'orchestrator_status', payload: status }));
@@ -464,7 +468,7 @@ export class HarnessServer {
       try {
         const result = await orchestrator.run(task, { priorMessages });
         logger.info('Orchestration completed', { status: result.status, retries: result.retries });
-        this.saveOrchestrationSession(task, result, sessionId);
+        const savedSessionId = this.saveOrchestrationSession(task, result, sessionId);
         const checkpoint = this.buildDiff(cp);
 
         if (ws.readyState === WebSocket.OPEN) {
@@ -481,12 +485,13 @@ export class HarnessServer {
                 retries: result.retries,
                 status: result.status,
               },
+              ...(savedSessionId !== undefined ? { sessionId: savedSessionId } : {}),
             },
           }));
         }
       } catch (err) {
         logger.error('Orchestration failed', { error: String(err) });
-        this.saveOrchestrationSession(
+        const savedSessionId = this.saveOrchestrationSession(
           task,
           {
             status: 'failed',
@@ -512,6 +517,7 @@ export class HarnessServer {
                 messages: priorMessages,
                 feedbackHistory: [],
                 checkpoint,
+                ...(savedSessionId !== undefined ? { sessionId: savedSessionId } : {}),
               },
             }));
           }

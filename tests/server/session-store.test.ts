@@ -80,4 +80,45 @@ describe('SessionStore', () => {
     expect(row.data.messages[0].content).toBe('again');
     expect(store.update(99999, { task: 'x', status: 'error', rounds: 0, data: { progressEvents: [], feedbackHistory: [], messages: [] } })).toBe(false);
   });
+
+  it('saveOrUpdate preserves original task when updating by id', () => {
+    const id = store.save({ task: 'original task', status: 'running', rounds: 0, data: sampleData });
+    const updatedId = store.saveOrUpdate(id, {
+      task: 'follow-up message',
+      status: 'completed',
+      rounds: 2,
+      data: {
+        ...sampleData,
+        messages: [
+          { role: 'user', content: 'original task' },
+          { role: 'user', content: 'follow-up message' },
+        ],
+      },
+    });
+    expect(updatedId).toBe(id);
+    const row = store.get(id)!;
+    expect(row.task).toBe('original task');
+    expect(row.status).toBe('completed');
+    expect(row.rounds).toBe(2);
+  });
+
+  it('saveOrUpdate creates new session when id is missing or unknown', () => {
+    const id = store.saveOrUpdate(undefined, {
+      task: 'new task',
+      status: 'completed',
+      rounds: 1,
+      data: sampleData,
+    });
+    expect(id).toBeGreaterThan(0);
+    expect(store.get(id)!.task).toBe('new task');
+
+    const id2 = store.saveOrUpdate(99999, {
+      task: 'fallback',
+      status: 'error',
+      rounds: 0,
+      data: sampleData,
+    });
+    expect(id2).toBeGreaterThan(id);
+    expect(store.get(id2)!.task).toBe('fallback');
+  });
 });

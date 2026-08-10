@@ -45,18 +45,47 @@ const ORCHESTRATOR_ROLES: Array<{ key: AgentRole; name: string; desc: string; av
 ];
 
 function chatFromSession(s: SessionRecord): ChatItem[] {
-  const items: ChatItem[] = [{ id: 'user-0', kind: 'user', text: s.task }];
-  s.data.progressEvents.forEach((p, i) => {
-    items.push({
-      id: `agent-${i}`,
-      kind: 'agent',
-      round: p.round,
-      text: p.assistantContent,
-      actions: p.actions,
-      feedbackStatus: p.feedbackStatus,
-      ...(p.agentRole ? { agentRole: p.agentRole } : {}),
+  const messages = s.data.messages ?? [];
+  const progressEvents = s.data.progressEvents;
+
+  if (messages.length === 0) {
+    const items: ChatItem[] = [{ id: 'user-0', kind: 'user', text: s.task }];
+    progressEvents.forEach((p, i) => {
+      items.push({
+        id: `agent-${i}`,
+        kind: 'agent',
+        round: p.round,
+        text: p.assistantContent,
+        actions: p.actions,
+        feedbackStatus: p.feedbackStatus,
+        ...(p.agentRole ? { agentRole: p.agentRole } : {}),
+      });
     });
-  });
+    return items;
+  }
+
+  const items: ChatItem[] = [];
+  let userIndex = 0;
+  let agentRoundIndex = 0;
+
+  for (const msg of messages) {
+    if (msg.role === 'user' && msg.content) {
+      items.push({ id: `user-${userIndex++}`, kind: 'user', text: msg.content });
+    } else if (msg.role === 'assistant' && msg.content) {
+      const pe = progressEvents[agentRoundIndex];
+      items.push({
+        id: `agent-${agentRoundIndex}`,
+        kind: 'agent',
+        round: pe?.round ?? agentRoundIndex + 1,
+        text: msg.content,
+        actions: pe?.actions,
+        feedbackStatus: pe?.feedbackStatus,
+        ...(pe?.agentRole ? { agentRole: pe.agentRole } : {}),
+      });
+      agentRoundIndex++;
+    }
+  }
+
   return items;
 }
 
@@ -208,6 +237,19 @@ export default function App() {
       void refresh();
     }
   }, [result, status, refresh]);
+
+  useEffect(() => {
+    if (result?.sessionId != null && activeSessionId == null) {
+      setActiveSessionId(result.sessionId);
+      const match = sessions.find((s) => s.id === result.sessionId);
+      if (match) {
+        setActiveSessionTask(match.task);
+      } else {
+        const firstUser = chat.find((it) => it.kind === 'user');
+        if (firstUser?.text) setActiveSessionTask(firstUser.text);
+      }
+    }
+  }, [result, activeSessionId, sessions, chat]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

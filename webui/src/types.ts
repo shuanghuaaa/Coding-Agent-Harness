@@ -52,6 +52,7 @@ export interface AgentResult {
   messages: Array<{ role: string; content: string; tool_calls?: unknown[] }>;
   feedbackHistory: Array<{ round: number; status: string }>;
   checkpoint?: CheckpointDiffPayload | null;
+  sessionId?: number;
 }
 
 export interface FileTreeNode {
