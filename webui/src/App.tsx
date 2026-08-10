@@ -197,6 +197,7 @@ export default function App() {
     respondHITL,
     clearCheckpoint,
     clearOrchestratorStatus,
+    clearResult,
   } = useWebSocket(`${protocol}//${wsHost}`);
   const { sessions, loading, error, refresh, remove } = useSessions();
 
@@ -256,6 +257,8 @@ export default function App() {
       setActiveSessionTask(s.task);
       setDetailError(null);
       clearCheckpoint();
+      clearResult();
+      clearOrchestratorStatus();
       setPage('session');
     } catch {
       setDetailError('会话详情加载失败');
@@ -276,6 +279,7 @@ export default function App() {
     setActiveSessionTask(null);
     seedChat([]);
     clearCheckpoint();
+    clearResult();
     clearOrchestratorStatus();
     setRollbackMsg(null);
     setSelectedFile(null);
