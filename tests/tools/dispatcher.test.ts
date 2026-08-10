@@ -20,6 +20,25 @@ describe('ToolDispatcher', () => {
     await expect(dispatcher.dispatch('unknown', {})).rejects.toThrow('Unknown tool: unknown');
   });
 
+  it('listTools returns registered tools', () => {
+    const readTool: Tool = {
+      name: 'read_file',
+      description: 'Read a file',
+      parameters: { type: 'object', properties: { path: { type: 'string' } } },
+      execute: async () => ({ tool_call_id: '', content: '' }),
+    };
+    const writeTool: Tool = {
+      name: 'write_file',
+      description: 'Write a file',
+      parameters: { type: 'object', properties: { path: { type: 'string' } } },
+      execute: async () => ({ tool_call_id: '', content: '' }),
+    };
+    const dispatcher = new ToolDispatcher([readTool, writeTool]);
+    const tools = dispatcher.listTools();
+    expect(tools).toHaveLength(2);
+    expect(tools.map((t) => t.name).sort()).toEqual(['read_file', 'write_file']);
+  });
+
   it('returns tool definitions for LLM context', () => {
     const readTool: Tool = {
       name: 'read_file',

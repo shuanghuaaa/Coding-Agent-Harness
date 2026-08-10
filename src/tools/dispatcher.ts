@@ -28,4 +28,8 @@ export class ToolDispatcher {
       },
     }));
   }
+
+  listTools(): Tool[] {
+    return Array.from(this.tools.values());
+  }
 }
