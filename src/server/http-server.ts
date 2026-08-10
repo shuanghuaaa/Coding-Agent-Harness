@@ -7,6 +7,7 @@ import { AgentLoop } from '../agent/loop';
 import type { HITLRequest, HITLResponse, RoundProgress, RunResult } from '../agent/loop';
 import type { SessionStore, SessionData } from './session-store';
 import type { WSMessage } from './types';
+import { readWorkspaceFile } from '../workspace/read-file';
 import { logger } from '../utils/logger';
 
 interface PendingHITL {
@@ -21,14 +22,21 @@ export class HarnessServer {
   private wss: WebSocketServer;
   private loop: AgentLoop;
   private sessionStore?: SessionStore;
+  private workspaceRoot: string;
   private token: string;
   private pendingHITL: Map<string, PendingHITL> = new Map();
   private runningLoops: Map<WebSocket, AgentLoop> = new Map();
   public readonly ready: Promise<void>;
 
-  constructor(loop: AgentLoop, port: number = 3000, sessionStore?: SessionStore) {
+  constructor(
+    loop: AgentLoop,
+    port: number = 3000,
+    sessionStore?: SessionStore,
+    workspaceRoot: string = process.cwd(),
+  ) {
     this.loop = loop;
     this.sessionStore = sessionStore;
+    this.workspaceRoot = workspaceRoot;
     this.token = process.env.HARNESS_TOKEN || '';
 
     this.app = express();
@@ -52,23 +60,23 @@ export class HarnessServer {
       res.json({ status: 'ok' });
     });
 
+    const requireToken: express.RequestHandler = (req, res, next) => {
+      if (!this.token) {
+        next();
+        return;
+      }
+      const auth = req.headers.authorization;
+      const bearer = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
+      const queryToken = typeof req.query.token === 'string' ? req.query.token : undefined;
+      if (bearer === this.token || queryToken === this.token) {
+        next();
+        return;
+      }
+      res.status(401).json({ error: 'unauthorized' });
+    };
+
     if (this.sessionStore) {
       const store = this.sessionStore;
-      const requireToken: express.RequestHandler = (req, res, next) => {
-        if (!this.token) {
-          next();
-          return;
-        }
-        const auth = req.headers.authorization;
-        const bearer = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
-        const queryToken = typeof req.query.token === 'string' ? req.query.token : undefined;
-        if (bearer === this.token || queryToken === this.token) {
-          next();
-          return;
-        }
-        res.status(401).json({ error: 'unauthorized' });
-      };
-
       this.app.get('/api/sessions', requireToken, (_req, res) => {
         res.json(store.list());
       });
@@ -91,6 +99,24 @@ export class HarnessServer {
         res.json({ ok: true });
       });
     }
+
+    this.app.get('/api/workspace/file', requireToken, (req, res) => {
+      const p = typeof req.query.path === 'string' ? req.query.path : '';
+      if (!p) {
+        res.status(400).json({ error: 'missing path' });
+        return;
+      }
+      try {
+        res.json(readWorkspaceFile(this.workspaceRoot, p));
+      } catch (err) {
+        const msg = String(err);
+        const status = /traversal|blocked/i.test(msg) ? 400
+          : /not found/i.test(msg) ? 404
+          : /too large|binary/i.test(msg) ? 415
+          : 500;
+        res.status(status).json({ error: msg });
+      }
+    });
 
     this.app.use(express.static(path.join(__dirname, '../../webui/dist')));
     this.app.get('*', (_req, res) => {

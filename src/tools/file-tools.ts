@@ -8,13 +8,17 @@ export function setWorkspaceRoot(root: string): void {
   workspaceRoot = root;
 }
 
-function resolvePath(inputPath: string): string {
-  const resolved = path.resolve(workspaceRoot, inputPath);
-  const relative = path.relative(path.resolve(workspaceRoot), resolved);
+export function resolveWorkspacePath(inputPath: string, root: string = workspaceRoot): string {
+  const resolved = path.resolve(root, inputPath);
+  const relative = path.relative(path.resolve(root), resolved);
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error(`Path traversal blocked: ${inputPath}`);
   }
   return resolved;
+}
+
+function resolvePath(inputPath: string): string {
+  return resolveWorkspacePath(inputPath);
 }
 
 export const readFileTool: Tool = {
