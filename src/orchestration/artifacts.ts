@@ -12,7 +12,8 @@ export interface StageArtifact {
 export type GateDecision =
   | { action: 'continue' }
   | { action: 'retry_coder'; reason: string }
-  | { action: 'warn'; reason: string };
+  | { action: 'warn'; reason: string }
+  | { action: 'retry_artifact'; reason: string };
 
 const SUMMARY_MAX = 500;
 
@@ -123,7 +124,11 @@ export function parseArtifactFromAssistant(
   return parseStageOutput(role, content, changedFiles).artifact;
 }
 
-export function decideGate(artifact: StageArtifact): GateDecision {
+export function decideGate(artifact: StageArtifact, parseOk: boolean = true): GateDecision {
+  if (!parseOk) {
+    return { action: 'retry_artifact', reason: 'artifact parse failed' };
+  }
+
   if (artifact.role === 'reviewer') {
     const block = artifact.findings?.find((f) => f.severity === 'block');
     if (block) {

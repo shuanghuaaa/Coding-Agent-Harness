@@ -138,4 +138,22 @@ describe('Orchestrator', () => {
     expect(result.status).toBe('cancelled');
     expect(result.stages).toHaveLength(0);
   });
+
+  it('pipeline with unparseable output fails after maxRetries', async () => {
+    const unparseable: LLMResponse = {
+      content: 'Just a plain text response without any artifact structure.',
+      tool_calls: [],
+      finish_reason: 'stop',
+    };
+
+    const responses: LLMResponse[] = [unparseable, unparseable, unparseable];
+
+    const { createLoop } = makeLoopFactory(responses);
+    const orch = new Orchestrator({ createLoop, maxRetries: 2 });
+    const result = await orch.run('Fix qux');
+
+    expect(result.status).toBe('failed');
+    expect(result.retries).toBe(2);
+    expect(result.messages.some((m) => m.role === 'user' && m.content.includes('could not be parsed'))).toBe(true);
+  });
 });

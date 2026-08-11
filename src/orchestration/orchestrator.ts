@@ -131,11 +131,11 @@ export class Orchestrator {
         messages = loopResult.messages;
         const changedFiles = getChangedFiles();
         const content = lastAssistantContent(loopResult.messages);
-        const { artifact } = parseStageOutput(role, content, changedFiles);
+        const { artifact, parseOk } = parseStageOutput(role, content, changedFiles);
         stages.push(artifact);
 
-        const gate = decideGate(artifact);
-        if (gate.action === 'retry_coder') {
+        const gate = decideGate(artifact, parseOk);
+        if (gate.action === 'retry_coder' || gate.action === 'retry_artifact') {
           const rolesAfter = idleRoles();
           rolesAfter[role] = 'blocked';
 
@@ -151,9 +151,15 @@ export class Orchestrator {
             roles: rolesAfter,
             lastGate: { from: role, reason: gate.reason },
           });
+
+          const retryInstruction =
+            gate.action === 'retry_artifact'
+              ? `Your output could not be parsed. Please provide a valid ARTIFACT line or JSON block.`
+              : `Gate rejected (${role}): ${gate.reason}. Please fix and resubmit.`;
+
           messages = [
             ...messages,
-            { role: 'user', content: `Gate rejected (${role}): ${gate.reason}. Please fix and resubmit.` },
+            { role: 'user', content: retryInstruction },
           ];
           pipelineComplete = false;
           break;
