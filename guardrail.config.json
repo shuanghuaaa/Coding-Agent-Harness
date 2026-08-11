@@ -1,0 +1,13 @@
+{
+  "patterns": [
+    {
+      "name": "chmod_777",
+      "toolName": "shell",
+      "argKey": "command",
+      "pattern": "\\bchmod\\s+777\\b",
+      "severity": "high",
+      "description": "chmod 777 - overly permissive file permissions"
+    }
+  ],
+  "disabled": []
+}

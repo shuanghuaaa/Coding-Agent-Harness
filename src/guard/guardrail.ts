@@ -1,4 +1,4 @@
-import { dangerousPatterns } from './rules';
+import { getEffectivePatterns } from './rules';
 
 export type GuardResult =
   | { blocked: true; reason: string; severity: 'high' | 'critical' }
@@ -8,7 +8,8 @@ export function guardrail(
   toolName: string,
   args: Record<string, unknown>
 ): GuardResult {
-  for (const rule of dangerousPatterns) {
+  const patterns = getEffectivePatterns();
+  for (const rule of patterns) {
     if (rule.toolName !== toolName) continue;
 
     const value = rule.argKey ? String(args[rule.argKey] ?? '') : JSON.stringify(args);
