@@ -84,7 +84,7 @@ async function main(): Promise<void> {
   const validator = new FeedbackValidator();
   const injector = new FeedbackInjector();
 
-  const credentialStore = process.env.LLM_PROVIDER ? await createCredentialStore() : undefined;
+  const credentialStore = await createCredentialStore();
   const llm = await createLLMProvider(credentialStore);
 
   const loop = new AgentLoop({
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   if (Number.isNaN(port)) {
     throw new Error(`Invalid PORT value: ${process.env.PORT}`);
   }
-  new HarnessServer(loop, port, sessionStore, workspaceRoot);
+  new HarnessServer(loop, port, sessionStore, workspaceRoot, credentialStore);
 
   process.on('SIGTERM', () => {
     logger.info('Shutting down...');
