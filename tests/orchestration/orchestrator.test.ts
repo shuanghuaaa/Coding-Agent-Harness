@@ -45,7 +45,7 @@ function makeLoopFactory(responses: LLMResponse[], llm?: MockLLM) {
       contextBuilder: new ContextBuilder({
         systemPrompt: ROLE_DEFINITIONS[role].systemPrompt,
         configRules: [],
-        memories: [],
+        memoryEntries: [],
       }),
       stopCondition: new StopCondition({ maxRounds: 5 }),
       validator: new FeedbackValidator(),

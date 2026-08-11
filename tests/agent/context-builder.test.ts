@@ -1,12 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { ContextBuilder } from '../../src/agent/context-builder';
+import type { MemoryEntry } from '../../src/memory/types';
 
 describe('ContextBuilder', () => {
   it('builds messages with system prompt, config, and memory', () => {
+    const memories: MemoryEntry[] = [
+      { id: 1, key: 'test-framework', value: 'Project uses vitest', category: 'convention', created_at: '', updated_at: '' },
+      { id: 2, key: 'code-style', value: 'Prefer arrow functions', category: 'preference', created_at: '', updated_at: '' },
+    ];
+
     const builder = new ContextBuilder({
       systemPrompt: 'You are a coding agent.',
       configRules: ['Use TypeScript', 'No any types'],
-      memories: ['Project uses vitest', 'Prefer arrow functions'],
+      memoryEntries: memories,
     });
 
     const messages = builder.build([{ role: 'user', content: 'Write add function' }]);

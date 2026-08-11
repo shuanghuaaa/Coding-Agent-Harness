@@ -120,7 +120,7 @@ describe('Harness Demo (★ core mechanism)', () => {
     const contextBuilder = new ContextBuilder({
       systemPrompt: 'You are a coding agent.',
       configRules: [],
-      memories: [],
+      memoryEntries: [],
     });
     const stopCondition = new StopCondition({ maxRounds: 10 });
     const validator = new FeedbackValidator();
@@ -182,7 +182,7 @@ describe('Harness Demo (★ core mechanism)', () => {
       const contextBuilder = new ContextBuilder({
         systemPrompt: 'You are a coding agent.',
         configRules: [],
-        memories: [],
+        memoryEntries: [],
       });
 
       return new AgentLoop({

@@ -385,7 +385,7 @@ export class HarnessServer {
       contextBuilder: new ContextBuilder({
         systemPrompt: ROLE_DEFINITIONS[role].systemPrompt,
         configRules: [],
-        memories: [],
+        memoryEntries: [],
       }),
       dispatcher: new ToolDispatcher(filterToolsForRole(role, allTools)),
       hitlCallback,

@@ -11,7 +11,7 @@ function makeLoop(responses: ConstructorParameters<typeof MockLLM>[0]) {
   return new AgentLoop({
     llm: new MockLLM(responses),
     dispatcher: new ToolDispatcher([]),
-    contextBuilder: new ContextBuilder({ systemPrompt: 'sys', configRules: [], memories: [] }),
+    contextBuilder: new ContextBuilder({ systemPrompt: 'sys', configRules: [], memoryEntries: [] }),
     stopCondition: new StopCondition({ maxRounds: 5 }),
     validator: new FeedbackValidator(),
     injector: new FeedbackInjector(),
@@ -39,7 +39,7 @@ describe('AgentLoop resume', () => {
     const loop = new AgentLoop({
       llm: new MockLLM([{ content: 'ok', tool_calls: [], finish_reason: 'stop' }]),
       dispatcher: new ToolDispatcher([]),
-      contextBuilder: new ContextBuilder({ systemPrompt: 'sys', configRules: [], memories: [] }),
+      contextBuilder: new ContextBuilder({ systemPrompt: 'sys', configRules: [], memoryEntries: [] }),
       stopCondition: new StopCondition({ maxRounds: 5 }),
       validator: new FeedbackValidator(),
       injector: new FeedbackInjector(),
