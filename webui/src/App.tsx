@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, Fragment, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useSessions } from './hooks/useSessions';
 import { getSession } from './api/sessions';
-import { getWorkspaceFile, listWorkspaceFiles } from './api/workspace';
+import { getWorkspaceFile, getWorkspaceRoot, listWorkspaceFiles, setWorkspaceRoot, clearWorkspaceRoot } from './api/workspace';
+import { rollbackCheckpoint } from './api/checkpoint';
 import { HITLModal } from './components/HITLModal';
 import { DiffPanel } from './components/DiffPanel';
+import { FolderPicker } from './components/FolderPicker';
+import { TaskRoundList, groupIntoTaskRounds } from './components/TaskRoundList';
+import { FinalResultCard, extractFinalOutput } from './components/FinalResultCard';
+import { loadProjects, upsertProject, removeProject, type SavedProject } from './lib/projects';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -23,20 +28,40 @@ import {
   File,
   Clock,
   Zap,
-  CheckCircle2,
   RotateCcw,
   History,
   Trash2,
   Search,
   X,
+  FolderOpen,
+  PanelLeftClose,
+  PanelLeft,
+  FolderPlus,
+  FolderX,
+  FileDiff,
   type LucideIcon,
 } from 'lucide-react';
 import type { AgentRole, ChatItem, FileTreeNode, RoleStatus, SessionRecord } from './types';
 
 const BUSY = new Set(['running']);
 const MODELS = ['K2.5', 'K2.5 Agent', 'K1.5'];
+const CONTEXT_SECTION_MIN = 14;
 
 type Page = 'dashboard' | 'session' | 'project' | 'settings';
+type ContextPanelKey = 'files' | 'metrics' | 'checkpoint';
+
+const CONTEXT_DOCK_ITEMS: Array<{
+  key: ContextPanelKey;
+  label: string;
+  hint: string;
+  icon: LucideIcon;
+}> = [
+  { key: 'files', label: '项目文件', hint: '浏览与打开工作区文件', icon: Folder },
+  { key: 'metrics', label: '运行指标', hint: '查看任务轮次、工具调用与变更统计', icon: Clock },
+  { key: 'checkpoint', label: '检查点', hint: '查看 Diff 并回滚本轮文件变更', icon: FileDiff },
+];
+
+const CONTEXT_PANEL_ORDER: ContextPanelKey[] = ['files', 'metrics', 'checkpoint'];
 
 const ORCHESTRATOR_ROLES: Array<{ key: AgentRole; name: string; desc: string; avatar: 'blue' | 'purple' | 'green' }> = [
   { key: 'coder', name: 'Coder Agent', desc: '代码编写与重构', avatar: 'blue' },
@@ -99,13 +124,6 @@ function roleStatusLabel(status: RoleStatus): string {
     error: '错误',
   };
   return map[status];
-}
-
-function roleBadgeClass(role?: string): string {
-  if (role === 'coder') return 'coder';
-  if (role === 'reviewer') return 'reviewer';
-  if (role === 'tester') return 'tester';
-  return '';
 }
 
 function relativeTime(iso: string): string {
@@ -205,9 +223,33 @@ export default function App() {
   const [sessionQuery, setSessionQuery] = useState('');
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
   const [fileTreeError, setFileTreeError] = useState<string | null>(null);
+  const [workspacePath, setWorkspacePath] = useState('');
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [folderPickerMode, setFolderPickerMode] = useState<'workspace' | 'import'>('workspace');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [openContextPanels, setOpenContextPanels] = useState<Record<ContextPanelKey, boolean>>({
+    files: true,
+    metrics: false,
+    checkpoint: false,
+  });
+  const [panelHeights, setPanelHeights] = useState<number[]>([100]);
+  const contextPanelRef = useRef<HTMLDivElement>(null);
+  const resizeDragRef = useRef<{
+    divider: number;
+    startY: number;
+    start: number[];
+  } | null>(null);
+  const [projectsPanelOpen, setProjectsPanelOpen] = useState(false);
+  const [projects, setProjects] = useState<SavedProject[]>(() => loadProjects());
+  const [projectOpen, setProjectOpen] = useState(() => Boolean(localStorage.getItem('harness-workspace')));
+  const [expandedRounds, setExpandedRounds] = useState<Record<string, boolean>>({});
   const [rollbackMsg, setRollbackMsg] = useState<string | null>(null);
+  const [rollbackBusy, setRollbackBusy] = useState(false);
+  const [rollbackDone, setRollbackDone] = useState(false);
+  const [rollbackError, setRollbackError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [composerFocused, setComposerFocused] = useState(false);
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsHost = import.meta.env.DEV ? 'localhost:3000' : window.location.host;
@@ -257,19 +299,157 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    if (page !== 'session') return;
+    const saved = localStorage.getItem('harness-workspace');
+    if (saved) {
+      void setWorkspaceRoot(saved)
+        .then((abs) => {
+          setWorkspacePath(abs);
+          setProjectOpen(true);
+          setProjects(upsertProject(abs));
+        })
+        .catch(() => {
+          localStorage.removeItem('harness-workspace');
+          setProjectOpen(false);
+          void getWorkspaceRoot().then(setWorkspacePath).catch(() => undefined);
+        });
+      return;
+    }
+    void getWorkspaceRoot()
+      .then(setWorkspacePath)
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (page !== 'session' || !projectOpen) {
+      if (!projectOpen) setFileTree([]);
+      return;
+    }
     void listWorkspaceFiles()
       .then((tree) => {
         setFileTree(tree);
         setFileTreeError(null);
       })
       .catch((err) => setFileTreeError(err instanceof Error ? err.message : String(err)));
-  }, [page, checkpoint]);
+  }, [page, checkpoint, workspacePath, projectOpen]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const drag = resizeDragRef.current;
+      const panel = contextPanelRef.current;
+      if (!drag || !panel) return;
+      const height = panel.getBoundingClientRect().height;
+      if (height <= 0) return;
+      const deltaPct = ((e.clientY - drag.startY) / height) * 100;
+      const next = [...drag.start];
+      const i = drag.divider;
+      let a = drag.start[i] + deltaPct;
+      let b = drag.start[i + 1] - deltaPct;
+      if (a < CONTEXT_SECTION_MIN) {
+        b -= CONTEXT_SECTION_MIN - a;
+        a = CONTEXT_SECTION_MIN;
+      }
+      if (b < CONTEXT_SECTION_MIN) {
+        a -= CONTEXT_SECTION_MIN - b;
+        b = CONTEXT_SECTION_MIN;
+      }
+      if (a < CONTEXT_SECTION_MIN || b < CONTEXT_SECTION_MIN) return;
+      next[i] = a;
+      next[i + 1] = b;
+      setPanelHeights(next);
+    };
+    const onUp = () => {
+      if (!resizeDragRef.current) return;
+      resizeDragRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
+  const openContextOrder = CONTEXT_PANEL_ORDER.filter((key) => openContextPanels[key]);
+
+  useEffect(() => {
+    const n = openContextOrder.length;
+    if (n === 0) {
+      setPanelHeights([]);
+      return;
+    }
+    setPanelHeights(Array.from({ length: n }, () => 100 / n));
+  }, [openContextOrder.join('|')]);
+
+  const startSectionResize = useCallback((divider: number, e: ReactMouseEvent) => {
+    e.preventDefault();
+    resizeDragRef.current = {
+      divider,
+      startY: e.clientY,
+      start: [...panelHeights],
+    };
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, [panelHeights]);
+
+  const toggleContextPanel = (key: ContextPanelKey) => {
+    setOpenContextPanels((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const closeContextPanel = (key: ContextPanelKey) => {
+    setOpenContextPanels((prev) => ({ ...prev, [key]: false }));
+  };
 
   const items = chat;
   const agentItems = items.filter((it) => it.kind === 'agent');
   const currentRound = agentItems.length;
   const toolCallCount = agentItems.reduce((n, it) => n + (it.actions?.length ?? 0), 0);
+  const taskRounds = groupIntoTaskRounds(items, {
+    running: busy,
+    result,
+    checkpointFiles: checkpoint?.files,
+  });
+  const displayRoundCount = taskRounds.length;
+  const finalOutput = !busy ? extractFinalOutput(result, items) : '';
+
+  useEffect(() => {
+    if (!busy || taskRounds.length === 0) return;
+    const lastId = taskRounds[taskRounds.length - 1].id;
+    setExpandedRounds((prev) => ({ ...prev, [lastId]: true }));
+  }, [busy, taskRounds.length, agentItems.length]);
+
+  useEffect(() => {
+    if (!result) return;
+    // 任务结束：收缩所有轮次，只保留任务说明 + 说明摘要
+    setExpandedRounds({});
+  }, [result]);
+
+  useEffect(() => {
+    setRollbackDone(false);
+    setRollbackError(null);
+  }, [checkpoint?.id]);
+
+  const toggleRound = (id: string) => {
+    setExpandedRounds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleRollback = async () => {
+    if (!checkpoint || rollbackBusy || rollbackDone) return;
+    setRollbackBusy(true);
+    setRollbackError(null);
+    try {
+      await rollbackCheckpoint(checkpoint.id);
+      setRollbackDone(true);
+      clearCheckpoint();
+      setRollbackMsg('已回滚到本轮任务开始时的检查点');
+      void listWorkspaceFiles().then(setFileTree).catch(() => undefined);
+    } catch (err) {
+      setRollbackError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRollbackBusy(false);
+    }
+  };
   const modifiedPaths = new Set(checkpoint?.files ?? []);
 
   const completedCount = sessions.filter((s) => s.status === 'completed').length;
@@ -301,6 +481,7 @@ export default function App() {
       clearCheckpoint();
       clearResult();
       clearOrchestratorStatus();
+      setExpandedRounds({});
       setPage('session');
     } catch {
       setDetailError('会话详情加载失败');
@@ -325,7 +506,21 @@ export default function App() {
     clearOrchestratorStatus();
     setRollbackMsg(null);
     setSelectedFile(null);
+    setExpandedRounds({});
+    setRollbackDone(false);
+    setRollbackError(null);
     setPage('session');
+  };
+
+  /** 关闭仪表盘 / 多 Agent / 设置后回到最近对话 */
+  const goToRecentConversation = () => {
+    setProjectsPanelOpen(false);
+    const recent = sessions[0];
+    if (recent) {
+      void handleSelectSession(recent.id);
+      return;
+    }
+    handleNewSession();
   };
 
   const handleFileClick = async (path: string) => {
@@ -382,13 +577,55 @@ export default function App() {
     }
   };
 
+  const openFolderPicker = (mode: 'workspace' | 'import' = 'workspace') => {
+    setFolderPickerMode(mode);
+    setFolderPickerOpen(true);
+  };
+
+  const handleProjectSelected = async (path: string) => {
+    try {
+      const abs = await setWorkspaceRoot(path);
+      setWorkspacePath(abs);
+      setSelectedFile(null);
+      setProjectOpen(true);
+      localStorage.setItem('harness-workspace', abs);
+      setProjects(upsertProject(abs));
+      setPage('session');
+    } catch (err) {
+      setFileTreeError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleCloseProject = async () => {
+    try {
+      await clearWorkspaceRoot();
+      const root = await getWorkspaceRoot();
+      setWorkspacePath(root);
+      setSelectedFile(null);
+      setFileTree([]);
+      setProjectOpen(false);
+      localStorage.removeItem('harness-workspace');
+      clearCheckpoint();
+    } catch (err) {
+      setFileTreeError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleOpenSavedProject = async (proj: SavedProject) => {
+    await handleProjectSelected(proj.path);
+  };
+
+  const handleRemoveSavedProject = (id: string) => {
+    setProjects(removeProject(id));
+  };
+
   const toggleTheme = () => setTheme((t) => (t === 'light' ? 'dark' : 'light'));
 
-  const NAV_ITEMS: Array<{ icon: LucideIcon; label: string; page: Page }> = [
-    { icon: LayoutDashboard, label: '仪表盘', page: 'dashboard' },
+  const NAV_ITEMS: Array<{ icon: LucideIcon; label: string; page: Page; closable?: boolean }> = [
+    { icon: LayoutDashboard, label: '仪表盘', page: 'dashboard', closable: true },
     { icon: MessageSquare, label: '会话', page: 'session' },
-    { icon: Users, label: '多 Agent', page: 'project' },
-    { icon: Settings, label: '设置', page: 'settings' },
+    { icon: Users, label: '多 Agent', page: 'project', closable: true },
+    { icon: Settings, label: '设置', page: 'settings', closable: true },
   ];
 
   return (
@@ -400,24 +637,52 @@ export default function App() {
           onReject={() => respondHITL(false)}
         />
       )}
+      {folderPickerOpen && (
+        <FolderPicker
+          currentPath={workspacePath}
+          title={folderPickerMode === 'import' ? '导入项目文件夹' : '打开项目文件夹'}
+          confirmLabel={folderPickerMode === 'import' ? '导入此文件夹' : '打开此文件夹'}
+          onClose={() => setFolderPickerOpen(false)}
+          onSelected={(path) => {
+            void handleProjectSelected(path);
+          }}
+        />
+      )}
 
-      <div className="app-body">
-        <aside className="sidebar">
+      <div className={`app-body ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+        <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
           <div className="sidebar-header">
-            <div className="sidebar-logo">
-              <span className="logo-icon">◆</span>
-              <span>Agent Harness</span>
+            {!sidebarCollapsed && (
+              <div className="sidebar-logo">
+                <span className="logo-icon">◆</span>
+                <span>Agent Harness</span>
+              </div>
+            )}
+            <div className="sidebar-header-actions">
+              <button
+                type="button"
+                className="theme-toggle"
+                onClick={() => setSidebarCollapsed((v) => !v)}
+                aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+                title={sidebarCollapsed ? '展开' : '缩进'}
+              >
+                {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+              </button>
+              {!sidebarCollapsed && (
+                <button
+                  type="button"
+                  className="theme-toggle"
+                  onClick={toggleTheme}
+                  aria-label={theme === 'light' ? '切换到深色模式' : '切换到浅色模式'}
+                >
+                  {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+                </button>
+              )}
             </div>
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={toggleTheme}
-              aria-label={theme === 'light' ? '切换到深色模式' : '切换到浅色模式'}
-            >
-              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-            </button>
           </div>
 
+          {!sidebarCollapsed && (
+            <>
           <button type="button" className="new-task-btn" onClick={handleNewSession}>
             <Plus size={16} />
             新建任务
@@ -425,17 +690,119 @@ export default function App() {
 
           <nav className="sidebar-nav">
             {NAV_ITEMS.map((item) => (
-              <button
+              <div
                 key={item.label}
-                type="button"
-                className={`nav-item ${page === item.page ? 'active' : ''}`}
-                onClick={() => setPage(item.page)}
+                className={`nav-item-row ${page === item.page ? 'active' : ''}`}
               >
-                <item.icon size={18} />
-                <span>{item.label}</span>
-              </button>
+                <button
+                  type="button"
+                  className={`nav-item ${page === item.page ? 'active' : ''}`}
+                  onClick={() => {
+                    setProjectsPanelOpen(false);
+                    setPage(item.page);
+                  }}
+                >
+                  <item.icon size={18} />
+                  <span>{item.label}</span>
+                </button>
+                {item.closable && page === item.page && (
+                  <button
+                    type="button"
+                    className="nav-item-close"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      goToRecentConversation();
+                    }}
+                    aria-label={`关闭${item.label}`}
+                    title="关闭，回到最近对话"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
             ))}
+            <div className={`nav-item-row ${projectsPanelOpen ? 'active' : ''}`}>
+              <button
+                type="button"
+                className={`nav-item ${projectsPanelOpen ? 'active' : ''}`}
+                onClick={() => setProjectsPanelOpen(true)}
+                aria-expanded={projectsPanelOpen}
+              >
+                <Folder size={18} />
+                <span>我的项目</span>
+              </button>
+              {projectsPanelOpen && (
+                <button
+                  type="button"
+                  className="nav-item-close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setProjectsPanelOpen(false);
+                  }}
+                  aria-label="关闭我的项目"
+                  title="关闭项目面板"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
           </nav>
+
+          {projectsPanelOpen && (
+            <div className="sidebar-projects-panel" role="region" aria-label="我的项目">
+              <div className="sidebar-panel-header">
+                <div className="sessions-header">
+                  <Folder size={12} />
+                  <span>我的项目</span>
+                </div>
+                <button
+                  type="button"
+                  className="nav-item-close"
+                  onClick={() => setProjectsPanelOpen(false)}
+                  aria-label="关闭我的项目"
+                  title="关闭"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+              <div className="project-actions-row">
+                <button type="button" className="header-btn" onClick={() => openFolderPicker('import')}>
+                  <FolderPlus size={12} />
+                  导入
+                </button>
+                <button type="button" className="header-btn" onClick={() => openFolderPicker('workspace')}>
+                  <FolderOpen size={12} />
+                  打开
+                </button>
+              </div>
+              {projects.length === 0 && (
+                <div className="sessions-empty">暂无项目，点击导入添加</div>
+              )}
+              <ul className="project-list">
+                {projects.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      className={`project-item ${projectOpen && workspacePath === p.path ? 'active' : ''}`}
+                      onClick={() => void handleOpenSavedProject(p)}
+                      title={p.path}
+                    >
+                      <span className="project-item-name">{p.name}</span>
+                      <span className="project-item-path">{p.path}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="session-delete"
+                      onClick={() => handleRemoveSavedProject(p.id)}
+                      aria-label={`移除项目：${p.name}`}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="sidebar-sessions">
             <div className="sessions-header">
@@ -499,14 +866,57 @@ export default function App() {
               <div className="user-plan">{connected ? '已连接' : '未连接'}</div>
             </div>
           </div>
+            </>
+          )}
+          {sidebarCollapsed && (
+            <nav className="sidebar-nav collapsed-nav">
+              {NAV_ITEMS.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  className={`nav-item icon-only ${page === item.page ? 'active' : ''}`}
+                  onClick={() => {
+                    setProjectsPanelOpen(false);
+                    setPage(item.page);
+                  }}
+                  title={item.label}
+                >
+                  <item.icon size={18} />
+                </button>
+              ))}
+              <button
+                type="button"
+                className={`nav-item icon-only ${projectsPanelOpen ? 'active' : ''}`}
+                onClick={() => {
+                  setSidebarCollapsed(false);
+                  setProjectsPanelOpen(true);
+                }}
+                title="我的项目"
+              >
+                <Folder size={18} />
+              </button>
+            </nav>
+          )}
         </aside>
 
         <main className="main-area">
           {page === 'dashboard' && (
             <div className="page-dashboard">
               <div className="dashboard-header">
-                <h1 className="dashboard-title">仪表盘</h1>
-                <p className="dashboard-subtitle">基于真实会话数据的工作负载概览</p>
+                <div className="dashboard-header-main">
+                  <h1 className="dashboard-title">仪表盘</h1>
+                  <p className="dashboard-subtitle">基于真实会话数据的工作负载概览</p>
+                </div>
+                <button
+                  type="button"
+                  className="header-btn page-close-btn"
+                  onClick={goToRecentConversation}
+                  title="关闭，回到最近对话"
+                  aria-label="关闭仪表盘"
+                >
+                  <X size={14} />
+                  关闭
+                </button>
               </div>
 
               <div className="stats-grid">
@@ -532,7 +942,7 @@ export default function App() {
                 <div className="stat-card">
                   <div className="stat-label">累计轮次</div>
                   <div className="stat-value">{totalRounds}</div>
-                  <div className="stat-change up">当前轮次 {currentRound} · 工具 {toolCallCount}</div>
+                  <div className="stat-change up">任务轮次 {displayRoundCount} · 工具 {toolCallCount}</div>
                 </div>
               </div>
 
@@ -571,13 +981,12 @@ export default function App() {
                     <span className="session-resume-badge">续跑 · #{activeSessionId}</span>
                   )}
                   <span className={`session-status ${status}`}>
-                    {status === 'running' ? `运行中 · 第 ${currentRound} 轮` : status}
+                    {status === 'running'
+                      ? `运行中 · 第 ${displayRoundCount || 1} 轮`
+                      : status}
                   </span>
                 </div>
                 <div className="session-header-right">
-                  <button type="button" className="header-btn" onClick={() => setPage('dashboard')}>
-                    返回
-                  </button>
                   <button type="button" className="header-btn" onClick={handleNewSession}>
                     <RotateCcw size={14} />
                     新会话
@@ -588,60 +997,18 @@ export default function App() {
               <div className="session-content">
                 <div className="chat-panel">
                   <div className="chat-messages">
-                    {items.length === 0 && (
-                      <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '40px' }}>
-                        <p>输入任务开始与 Agent 对话</p>
-                      </div>
-                    )}
-                    {items.map((item) =>
-                      item.kind === 'user' ? (
-                        <div key={item.id} className="message user">
-                          <div className="message-bubble">{item.text}</div>
-                          <div className="message-meta">你</div>
-                        </div>
-                      ) : (
-                        <div key={item.id} className="message agent">
-                          <div className="message-bubble">{item.text}</div>
-                          {item.actions && item.actions.length > 0 && (
-                            <div className="tool-call-card">
-                              <div className="tool-call-header">
-                                <Zap size={14} className="tool-call-icon" />
-                                <span>工具调用 · {item.actions.length}</span>
-                              </div>
-                              <div className="tool-call-body">
-                                {item.actions.map((a, i) => (
-                                  <div key={i}>
-                                    <strong>{a.tool}</strong>
-                                    {'\n'}
-                                    {a.result}
-                                  </div>
-                                ))}
-                              </div>
-                              <div className={`tool-call-result ${item.feedbackStatus === 'fail' ? 'error' : 'success'}`}>
-                                <CheckCircle2 size={12} />
-                                {item.feedbackStatus === 'fail' ? '反馈失败' : '执行完成'}
-                              </div>
-                            </div>
-                          )}
-                          <div className="message-meta">
-                            {item.agentRole ? (
-                              <span className={`role-badge ${roleBadgeClass(item.agentRole)}`}>{item.agentRole}</span>
-                            ) : (
-                              'Agent'
-                            )}
-                            {' · 第 '}{item.round}{' 轮'}
-                          </div>
-                        </div>
-                      ),
-                    )}
-                    {result && (
-                      <div className="message agent">
-                        <div className="message-bubble">
-                          <strong>{result.status === 'completed' ? '任务完成' : result.status}</strong>
-                          <br />
-                          共 {result.rounds} 轮
-                        </div>
-                      </div>
+                    <TaskRoundList
+                      rounds={taskRounds}
+                      expanded={expandedRounds}
+                      onToggle={toggleRound}
+                      checkpoint={checkpoint}
+                      onRollback={() => void handleRollback()}
+                      rollbackBusy={rollbackBusy}
+                      rollbackDone={rollbackDone}
+                      rollbackError={rollbackError}
+                    />
+                    {finalOutput && (
+                      <FinalResultCard content={finalOutput} status={result?.status} />
                     )}
                     {rollbackMsg && (
                       <div className="message agent">
@@ -662,11 +1029,16 @@ export default function App() {
                       </div>
                     )}
                     <form
-                      className={`composer ${dragOver ? 'drag-over' : ''}`}
+                      className={`composer ${dragOver ? 'drag-over' : ''} ${composerFocused ? 'expanded' : ''}`}
                       onSubmit={handleSubmit}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
+                      onFocusCapture={() => setComposerFocused(true)}
+                      onBlurCapture={(e) => {
+                        const next = e.relatedTarget as Node | null;
+                        if (!e.currentTarget.contains(next)) setComposerFocused(false);
+                      }}
                     >
                       <input ref={fileInputRef} type="file" multiple hidden onChange={handleFiles} />
                       <button type="button" className="composer-icon" onClick={handleAttach} disabled={busy}>
@@ -715,85 +1087,171 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="context-panel">
-                  <div className="context-section">
-                    <h3 className="context-section-title">
-                      <Folder size={14} />
-                      项目文件
-                    </h3>
-                    {selectedFile ? (
-                      <div className="file-viewer">
-                        <div className="file-viewer-head">
-                          <span className="file-viewer-path" title={selectedFile.path}>{selectedFile.path}</span>
-                          <button
-                            type="button"
-                            className="file-viewer-close"
-                            onClick={() => setSelectedFile(null)}
-                            aria-label="关闭文件查看器"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                        <pre className="file-viewer-content">{selectedFile.content}</pre>
-                      </div>
-                    ) : (
-                      <>
-                        {fileTreeError && <div className="sessions-error">{fileTreeError}</div>}
-                        {fileViewerError && <div className="sessions-error">{fileViewerError}</div>}
-                        {!fileTreeError && fileTree.length === 0 && (
-                          <div className="sessions-empty">加载文件树中…</div>
-                        )}
-                        <div className="file-tree">
-                          {fileTree.map((node) => (
-                            <FileTreeNodeView
-                              key={node.path}
-                              node={node}
-                              depth={0}
-                              modifiedPaths={modifiedPaths}
-                              selectedPath={null}
-                              onFileClick={(path) => void handleFileClick(path)}
-                            />
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
+                <div className={`context-panel ${openContextOrder.length === 0 ? 'rail-only' : ''}`}>
+                  <aside className="context-icon-rail" aria-label="工作区面板">
+                    {CONTEXT_DOCK_ITEMS.map((item) => {
+                      const Icon = item.icon;
+                      const active = openContextPanels[item.key];
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          className={`context-dock-btn ${active ? 'active' : ''}`}
+                          onClick={() => toggleContextPanel(item.key)}
+                          aria-pressed={active}
+                          aria-label={item.label}
+                        >
+                          <Icon size={18} />
+                          <span className="context-dock-tooltip" role="tooltip">
+                            <strong>{item.label}</strong>
+                            <span>{item.hint}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </aside>
 
-                  <div className="context-section">
-                    <h3 className="context-section-title">
-                      <Clock size={14} />
-                      运行指标
-                    </h3>
-                    <div className="token-bar">
-                      <div className="token-label">
-                        <span>当前轮次</span>
-                        <span>{currentRound}</span>
-                      </div>
-                      <div className="token-label">
-                        <span>工具调用</span>
-                        <span>{toolCallCount}</span>
-                      </div>
-                      <div className="token-label">
-                        <span>变更文件</span>
-                        <span>{checkpoint?.files.length ?? 0}</span>
-                      </div>
+                  {openContextOrder.length > 0 && (
+                    <div className="context-panel-body" ref={contextPanelRef}>
+                      {openContextOrder.map((key, index) => {
+                        const meta = CONTEXT_DOCK_ITEMS.find((item) => item.key === key)!;
+                        const TitleIcon = meta.icon;
+                        return (
+                          <Fragment key={key}>
+                            {index > 0 && (
+                              <div
+                                className="context-resize-handle"
+                                onMouseDown={(e) => startSectionResize(index - 1, e)}
+                                role="separator"
+                                aria-orientation="horizontal"
+                                aria-label={`调整${CONTEXT_DOCK_ITEMS.find((i) => i.key === openContextOrder[index - 1])?.label}与${meta.label}高度`}
+                              />
+                            )}
+                            <div
+                              className={`context-section context-${key}`}
+                              style={{ flexBasis: `${panelHeights[index] ?? 100 / openContextOrder.length}%` }}
+                            >
+                              <div className="context-section-title-row">
+                                <h3 className="context-section-title">
+                                  <TitleIcon size={14} />
+                                  {meta.label}
+                                </h3>
+                                <button
+                                  type="button"
+                                  className="context-section-close"
+                                  onClick={() => closeContextPanel(key)}
+                                  aria-label={`关闭${meta.label}`}
+                                  title="关闭"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+
+                              {key === 'files' && (
+                                <>
+                                  <div className="workspace-bar">
+                                    <span className="workspace-path" title={workspacePath || '未选择'}>
+                                      {projectOpen ? (workspacePath || '未选择工作区') : '当前未打开项目'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="header-btn"
+                                      onClick={() => openFolderPicker('workspace')}
+                                      title="打开文件夹"
+                                    >
+                                      <FolderOpen size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="header-btn"
+                                      onClick={() => void handleCloseProject()}
+                                      disabled={!projectOpen}
+                                      title="关闭当前项目"
+                                    >
+                                      <FolderX size={14} />
+                                    </button>
+                                  </div>
+                                  <div className="file-tree-scroll">
+                                    {!projectOpen ? (
+                                      <div className="sessions-empty">请从左侧导入或打开项目</div>
+                                    ) : selectedFile ? (
+                                      <div className="file-viewer">
+                                        <div className="file-viewer-head">
+                                          <span className="file-viewer-path" title={selectedFile.path}>{selectedFile.path}</span>
+                                          <button
+                                            type="button"
+                                            className="file-viewer-close"
+                                            onClick={() => setSelectedFile(null)}
+                                            aria-label="关闭文件查看器"
+                                          >
+                                            <X size={14} />
+                                          </button>
+                                        </div>
+                                        <pre className="file-viewer-content">{selectedFile.content}</pre>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        {fileTreeError && <div className="sessions-error">{fileTreeError}</div>}
+                                        {fileViewerError && <div className="sessions-error">{fileViewerError}</div>}
+                                        {!fileTreeError && fileTree.length === 0 && (
+                                          <div className="sessions-empty">加载文件树中…</div>
+                                        )}
+                                        <div className="file-tree">
+                                          {fileTree.map((node) => (
+                                            <FileTreeNodeView
+                                              key={node.path}
+                                              node={node}
+                                              depth={0}
+                                              modifiedPaths={modifiedPaths}
+                                              selectedPath={null}
+                                              onFileClick={(path) => void handleFileClick(path)}
+                                            />
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+
+                              {key === 'metrics' && (
+                                <div className="context-section-body">
+                                  <div className="token-bar">
+                                    <div className="token-label">
+                                      <span>任务轮次</span>
+                                      <span>{displayRoundCount}</span>
+                                    </div>
+                                    <div className="token-label">
+                                      <span>工具调用</span>
+                                      <span>{toolCallCount}</span>
+                                    </div>
+                                    <div className="token-label">
+                                      <span>变更文件</span>
+                                      <span>{checkpoint?.files.length ?? 0}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {key === 'checkpoint' && (
+                                <div className="context-section-body">
+                                  <DiffPanel
+                                    checkpoint={checkpoint}
+                                    onRolledBack={() => {
+                                      setRollbackDone(true);
+                                      clearCheckpoint();
+                                      setRollbackMsg('已回滚到本轮任务开始时的检查点');
+                                      void listWorkspaceFiles().then(setFileTree).catch(() => undefined);
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </Fragment>
+                        );
+                      })}
                     </div>
-                  </div>
-
-                  <div className="context-section">
-                    <h3 className="context-section-title">
-                      <RotateCcw size={14} />
-                      检查点 / Diff
-                    </h3>
-                    <DiffPanel
-                      checkpoint={checkpoint}
-                      onRolledBack={() => {
-                        clearCheckpoint();
-                        setRollbackMsg('已回滚到任务开始时的检查点');
-                        void listWorkspaceFiles().then(setFileTree).catch(() => undefined);
-                      }}
-                    />
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -804,6 +1262,16 @@ export default function App() {
               <div className="project-header">
                 <h1 className="project-title">Coding Agent Harness</h1>
                 <div className="project-actions">
+                  <button
+                    type="button"
+                    className="header-btn page-close-btn"
+                    onClick={goToRecentConversation}
+                    title="关闭，回到最近对话"
+                    aria-label="关闭多 Agent"
+                  >
+                    <X size={14} />
+                    关闭
+                  </button>
                   <button type="button" className="header-btn" onClick={() => setPage('settings')}>
                     <Settings size={14} />
                     配置
@@ -903,8 +1371,20 @@ export default function App() {
           {page === 'settings' && (
             <div className="page-dashboard">
               <div className="dashboard-header">
-                <h1 className="dashboard-title">设置</h1>
-                <p className="dashboard-subtitle">主题、连接状态与运行环境</p>
+                <div className="dashboard-header-main">
+                  <h1 className="dashboard-title">设置</h1>
+                  <p className="dashboard-subtitle">主题、连接状态与运行环境</p>
+                </div>
+                <button
+                  type="button"
+                  className="header-btn page-close-btn"
+                  onClick={goToRecentConversation}
+                  title="关闭，回到最近对话"
+                  aria-label="关闭设置"
+                >
+                  <X size={14} />
+                  关闭
+                </button>
               </div>
 
               <div className="settings-grid">

@@ -1,6 +1,7 @@
 import type { Tool } from './base';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { getWorkspaceRoot } from './file-tools';
 
 const execAsync = promisify(exec);
 
@@ -18,6 +19,7 @@ export const shellTool: Tool = {
     const { command } = args as { command: string };
     try {
       const { stdout } = await execAsync(command, {
+        cwd: getWorkspaceRoot(),
         timeout: 30000,
         maxBuffer: 10 * 1024 * 1024,
       });

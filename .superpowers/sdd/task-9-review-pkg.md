@@ -1,0 +1,1089 @@
+﻿BASE 126ba41e7d2fbd17b74e1561ffbc167fd87688f5
+HEAD 8797f84fc16c915dd4431e40c027dbc4f79f929d
+## Commits
+8797f84 feat(webui): file viewer, session resume, live multi-agent page
+
+## Stat
+ webui/src/App.tsx    | 728 +++++++++++++++++++++++++++++++++++----------------
+ webui/src/styles.css | 632 +++++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 1138 insertions(+), 222 deletions(-)
+
+## Diff App.tsx
+diff --git a/webui/src/App.tsx b/webui/src/App.tsx
+index 7e51c87..3eaa990 100644
+--- a/webui/src/App.tsx
++++ b/webui/src/App.tsx
+@@ -1,10 +1,11 @@
+ import { useEffect, useRef, useState, type FormEvent } from 'react';
+ import { useWebSocket } from './hooks/useWebSocket';
+ import { useSessions } from './hooks/useSessions';
+ import { getSession } from './api/sessions';
+-import { ChatTimeline, type EndSummary } from './components/ChatTimeline';
++import { getWorkspaceFile, listWorkspaceFiles } from './api/workspace';
+ import { HITLModal } from './components/HITLModal';
++import { DiffPanel } from './components/DiffPanel';
+ import {
+   LayoutDashboard,
+   MessageSquare,
+   Users,
+@@ -19,73 +20,29 @@ import {
+   Folder,
+   FileCode,
+   FileText,
+   File,
+-  GitBranch,
+   Clock,
+   Zap,
+   CheckCircle2,
+-  AlertCircle,
+   RotateCcw,
++  History,
++  Trash2,
++  Search,
++  X,
+   type LucideIcon,
+ } from 'lucide-react';
+-import type { ChatItem, SessionRecord } from './types';
++import type { AgentRole, ChatItem, FileTreeNode, RoleStatus, SessionRecord } from './types';
+ 
+ const BUSY = new Set(['running']);
+ const MODELS = ['K2.5', 'K2.5 Agent', 'K1.5'];
+ 
+-type Page = 'dashboard' | 'session' | 'project';
++type Page = 'dashboard' | 'session' | 'project' | 'settings';
+ 
+-interface FileNode {
+-  name: string;
+-  path: string;
+-  type: 'file' | 'folder';
+-  modified?: boolean;
+-  children?: FileNode[];
+-}
+-
+-const MOCK_FILE_TREE: FileNode[] = [
+-  {
+-    name: 'src',
+-    path: 'src',
+-    type: 'folder',
+-    children: [
+-      { name: 'server', path: 'src/server', type: 'folder', children: [
+-        { name: 'http-server.ts', path: 'src/server/http-server.ts', type: 'file', modified: true },
+-        { name: 'index.ts', path: 'src/index.ts', type: 'file' },
+-      ]},
+-      { name: 'workspace', path: 'src/workspace', type: 'folder', children: [
+-        { name: 'checkpoint.ts', path: 'src/workspace/checkpoint.ts', type: 'file', modified: true },
+-      ]},
+-      { name: 'credentials', path: 'src/credentials', type: 'folder', children: [
+-        { name: 'aes-file.ts', path: 'src/credentials/aes-file.ts', type: 'file' },
+-      ]},
+-    ],
+-  },
+-  { name: 'webui', path: 'webui', type: 'folder', children: [
+-    { name: 'src', path: 'webui/src', type: 'folder', children: [
+-      { name: 'App.tsx', path: 'webui/src/App.tsx', type: 'file', modified: true },
+-      { name: 'styles.css', path: 'webui/src/styles.css', type: 'file', modified: true },
+-    ]},
+-  ]},
+-  { name: 'tests', path: 'tests', type: 'folder', children: [
+-    { name: 'checkpoint.test.ts', path: 'tests/workspace/checkpoint.test.ts', type: 'file' },
+-  ]},
+-  { name: 'README.md', path: 'README.md', type: 'file' },
+-  { name: 'package.json', path: 'package.json', type: 'file' },
+-];
+-
+-const MOCK_AGENTS = [
+-  { name: 'Coder Agent', role: '代码编写与重构', status: 'online' as const, tasks: 12, success: 94 },
+-  { name: 'Reviewer Agent', role: '代码审查与优化', status: 'thinking' as const, tasks: 8, success: 88 },
+-  { name: 'Tester Agent', role: '测试生成与执行', status: 'idle' as const, tasks: 15, success: 91 },
+-];
+-
+-const MOCK_ACTIVITIES = [
+-  { icon: '◆', text: 'Coder Agent 完成了 http-server.ts 的重构', time: '2 分钟前', type: 'blue' },
+-  { icon: '✓', text: '所有测试通过，准备部署', time: '5 分钟前', type: 'green' },
+-  { icon: '⚡', text: 'Reviewer Agent 提出了 3 处优化建议', time: '12 分钟前', type: 'purple' },
+-  { icon: '↻', text: '回滚到检查点 a1b2c3d', time: '1 小时前', type: 'blue' },
++const ORCHESTRATOR_ROLES: Array<{ key: AgentRole; name: string; desc: string; avatar: 'blue' | 'purple' | 'green' }> = [
++  { key: 'coder', name: 'Coder Agent', desc: '代码编写与重构', avatar: 'blue' },
++  { key: 'reviewer', name: 'Reviewer Agent', desc: '代码审查与优化', avatar: 'purple' },
++  { key: 'tester', name: 'Tester Agent', desc: '测试生成与执行', avatar: 'green' },
+ ];
+ 
+ function chatFromSession(s: SessionRecord): ChatItem[] {
+   const items: ChatItem[] = [{ id: 'user-0', kind: 'user', text: s.task }];
+@@ -96,58 +53,152 @@ function chatFromSession(s: SessionRecord): ChatItem[] {
+       round: p.round,
+       text: p.assistantContent,
+       actions: p.actions,
+       feedbackStatus: p.feedbackStatus,
++      ...(p.agentRole ? { agentRole: p.agentRole } : {}),
+     });
+   });
+   return items;
+ }
+ 
+-function FileTreeNode({ node, depth }: { node: FileNode; depth: number }) {
++function roleStatusLabel(status: RoleStatus): string {
++  const map: Record<RoleStatus, string> = {
++    idle: '空闲',
++    running: '运行中',
++    waiting: '等待',
++    done: '完成',
++    blocked: '阻塞',
++    error: '错误',
++  };
++  return map[status];
++}
++
++function roleBadgeClass(role?: string): string {
++  if (role === 'coder') return 'coder';
++  if (role === 'reviewer') return 'reviewer';
++  if (role === 'tester') return 'tester';
++  return '';
++}
++
++function relativeTime(iso: string): string {
++  const then = new Date(iso.replace(' ', 'T') + 'Z').getTime();
++  const diff = Date.now() - then;
++  const minutes = Math.floor(diff / 60000);
++  if (minutes < 1) return '刚刚';
++  if (minutes < 60) return `${minutes} 分钟前`;
++  const hours = Math.floor(minutes / 60);
++  if (hours < 24) return `${hours} 小时前`;
++  return `${Math.floor(hours / 24)} 天前`;
++}
++
++function statusBadge(status: string): { label: string; className: string } {
++  const map: Record<string, { label: string; className: string }> = {
++    completed: { label: '完成', className: 'ok' },
++    error: { label: '错误', className: 'bad' },
++    cancelled: { label: '取消', className: 'dim' },
++    max_rounds: { label: '超限', className: 'bad' },
++  };
++  return map[status] ?? { label: status, className: 'dim' };
++}
++
++function FileTreeNodeView({
++  node,
++  depth,
++  modifiedPaths,
++  selectedPath,
++  onFileClick,
++}: {
++  node: FileTreeNode;
++  depth: number;
++  modifiedPaths: Set<string>;
++  selectedPath?: string | null;
++  onFileClick: (path: string) => void;
++}) {
+   const [open, setOpen] = useState(depth < 2);
+   const isFolder = node.type === 'folder';
+-  const Icon = isFolder ? Folder : node.name.endsWith('.ts') || node.name.endsWith('.tsx') ? FileCode : node.name.endsWith('.md') ? FileText : File;
++  const modified = modifiedPaths.has(node.path);
++  const Icon = isFolder
++    ? Folder
++    : node.name.endsWith('.ts') || node.name.endsWith('.tsx')
++      ? FileCode
++      : node.name.endsWith('.md')
++        ? FileText
++        : File;
+ 
+   return (
+     <div>
+       <div
+-        className={`file-tree-item ${node.modified ? 'modified' : ''}`}
++        className={`file-tree-item ${modified ? 'modified' : ''} ${selectedPath === node.path ? 'selected' : ''}`}
+         style={{ paddingLeft: `${depth * 16 + 8}px` }}
+-        onClick={() => isFolder && setOpen(!open)}
++        onClick={() => (isFolder ? setOpen(!open) : onFileClick(node.path))}
+       >
+         <Icon size={14} />
+         <span>{node.name}</span>
+-        {node.modified && <span className="modified-dot" />}
++        {modified && <span className="modified-dot" />}
+       </div>
+       {isFolder && open && node.children?.map((child) => (
+-        <FileTreeNode key={child.path} node={child} depth={depth + 1} />
++        <FileTreeNodeView
++          key={child.path}
++          node={child}
++          depth={depth + 1}
++          modifiedPaths={modifiedPaths}
++          selectedPath={selectedPath}
++          onFileClick={onFileClick}
++        />
+       ))}
+     </div>
+   );
+ }
+ 
+-function StatusDot({ status }: { status: 'online' | 'thinking' | 'idle' }) {
+-  if (status === 'online') return <span className="status-dot active" />;
+-  if (status === 'thinking') return <span className="status-dot" style={{ background: 'var(--warn)' }} />;
++function RoleStatusDot({ status }: { status: RoleStatus }) {
++  if (status === 'running') return <span className="status-dot" style={{ background: 'var(--warn)' }} />;
++  if (status === 'done') return <span className="status-dot active" />;
++  if (status === 'blocked' || status === 'error') return <span className="status-dot error" />;
++  if (status === 'waiting') return <span className="status-dot" style={{ background: 'var(--accent)' }} />;
+   return <span className="status-dot idle" />;
+ }
+ 
+ export default function App() {
+-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
++  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
++    (localStorage.getItem('harness-theme') as 'light' | 'dark') || 'light',
++  );
+   const [page, setPage] = useState<Page>('dashboard');
+   const [task, setTask] = useState('');
+-  const [review, setReview] = useState<SessionRecord | null>(null);
++  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
++  const [activeSessionTask, setActiveSessionTask] = useState<string | null>(null);
+   const [detailError, setDetailError] = useState<string | null>(null);
++  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
++  const [fileViewerError, setFileViewerError] = useState<string | null>(null);
++  const [orchestrateTask, setOrchestrateTask] = useState('');
++  const [maxRetries, setMaxRetries] = useState(2);
+   const [model, setModel] = useState(MODELS[0]);
+   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+   const [dragOver, setDragOver] = useState(false);
++  const [sessionQuery, setSessionQuery] = useState('');
++  const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
++  const [fileTreeError, setFileTreeError] = useState<string | null>(null);
++  const [rollbackMsg, setRollbackMsg] = useState<string | null>(null);
+   const fileInputRef = useRef<HTMLInputElement>(null);
+   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+ 
+   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+   const wsHost = import.meta.env.DEV ? 'localhost:3000' : window.location.host;
+-  const { connected, status, result, hitlRequest, chat, sendTask, cancel, respondHITL } =
+-    useWebSocket(`${protocol}//${wsHost}`);
++  const {
++    connected,
++    status,
++    result,
++    hitlRequest,
++    chat,
++    checkpoint,
++    sendTask,
++    sendOrchestrate,
++    seedChat,
++    orchestratorStatus,
++    cancel,
++    respondHITL,
++    clearCheckpoint,
++    clearOrchestratorStatus,
++  } = useWebSocket(`${protocol}//${wsHost}`);
+   const { sessions, loading, error, refresh, remove } = useSessions();
+ 
+   const busy = BUSY.has(status);
+ 
+@@ -158,75 +209,124 @@ export default function App() {
+   }, [result, status, refresh]);
+ 
+   useEffect(() => {
+     document.documentElement.dataset.theme = theme;
++    localStorage.setItem('harness-theme', theme);
+   }, [theme]);
+ 
+-  const items = review ? chatFromSession(review) : chat;
++  useEffect(() => {
++    if (page !== 'session') return;
++    void listWorkspaceFiles()
++      .then((tree) => {
++        setFileTree(tree);
++        setFileTreeError(null);
++      })
++      .catch((err) => setFileTreeError(err instanceof Error ? err.message : String(err)));
++  }, [page, checkpoint]);
++
++  const items = chat;
+   const agentItems = items.filter((it) => it.kind === 'agent');
+   const currentRound = agentItems.length;
++  const toolCallCount = agentItems.reduce((n, it) => n + (it.actions?.length ?? 0), 0);
++  const modifiedPaths = new Set(checkpoint?.files ?? []);
++
++  const completedCount = sessions.filter((s) => s.status === 'completed').length;
++  const errorCount = sessions.filter((s) => s.status === 'error' || s.status === 'max_rounds').length;
++  const totalRounds = sessions.reduce((n, s) => n + s.rounds, 0);
+ 
+-  const end: EndSummary | null = review
+-    ? { status: review.status, rounds: review.rounds, feedbackHistory: review.data.feedbackHistory }
+-    : result
+-      ? { status: result.status, rounds: result.rounds, feedbackHistory: result.feedbackHistory }
+-      : null;
++  const filteredSessions = sessions.filter((s) =>
++    !sessionQuery.trim() || s.task.toLowerCase().includes(sessionQuery.trim().toLowerCase()),
++  );
+ 
+   const handleSubmit = (e: FormEvent) => {
+     e.preventDefault();
+-    if ((task.trim() || attachedFiles.length > 0) && !busy && !review) {
+-      sendTask(task.trim());
++    if ((task.trim() || attachedFiles.length > 0) && !busy) {
++      sendTask(task.trim(), activeSessionId != null ? { sessionId: activeSessionId } : undefined);
+       setTask('');
+       setAttachedFiles([]);
+       setPage('session');
++      setRollbackMsg(null);
+     }
+   };
+ 
+   const handleSelectSession = async (id: number) => {
+     try {
+-      setReview(await getSession(id));
++      const s = await getSession(id);
++      seedChat(chatFromSession(s));
++      setActiveSessionId(id);
++      setActiveSessionTask(s.task);
+       setDetailError(null);
++      clearCheckpoint();
+       setPage('session');
+     } catch {
+       setDetailError('会话详情加载失败');
+     }
+   };
+ 
+   const handleDeleteSession = async (id: number) => {
+     await remove(id);
+-    if (review?.id === id) setReview(null);
++    if (activeSessionId === id) {
++      setActiveSessionId(null);
++      setActiveSessionTask(null);
++      seedChat([]);
++    }
+   };
+ 
+-  const handleAttach = () => fileInputRef.current?.click();
++  const handleNewSession = () => {
++    setActiveSessionId(null);
++    setActiveSessionTask(null);
++    seedChat([]);
++    clearCheckpoint();
++    clearOrchestratorStatus();
++    setRollbackMsg(null);
++    setSelectedFile(null);
++    setPage('session');
++  };
+ 
+-  const addFiles = (files: File[]) => setAttachedFiles((prev) => [...prev, ...files]);
++  const handleFileClick = async (path: string) => {
++    try {
++      const file = await getWorkspaceFile(path);
++      setSelectedFile({ path: file.path, content: file.content });
++      setFileViewerError(null);
++    } catch {
++      setFileViewerError('无法加载文件');
++      setSelectedFile(null);
++    }
++  };
++
++  const handleStartOrchestrate = () => {
++    const t = orchestrateTask.trim();
++    if (!t || busy || !connected) return;
++    sendOrchestrate(t, { maxRetries });
++    setOrchestrateTask('');
++    setPage('session');
++  };
+ 
++  const handleAttach = () => fileInputRef.current?.click();
++  const addFiles = (files: File[]) => setAttachedFiles((prev) => [...prev, ...files]);
+   const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+     addFiles(Array.from(e.target.files ?? []));
+     e.target.value = '';
+   };
+-
+   const removeFile = (index: number) => {
+     setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+   };
+ 
+   const handleDragOver = (e: React.DragEvent) => {
+     e.preventDefault();
+     e.stopPropagation();
+-    if (!busy && !review) setDragOver(true);
++    if (!busy) setDragOver(true);
+   };
+-
+   const handleDragLeave = (e: React.DragEvent) => {
+     e.preventDefault();
+     e.stopPropagation();
+     setDragOver(false);
+   };
+-
+   const handleDrop = (e: React.DragEvent) => {
+     e.preventDefault();
+     e.stopPropagation();
+     setDragOver(false);
+-    if (busy || review) return;
++    if (busy) return;
+     addFiles(Array.from(e.dataTransfer.files ?? []));
+   };
+ 
+   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+@@ -241,9 +341,9 @@ export default function App() {
+   const NAV_ITEMS: Array<{ icon: LucideIcon; label: string; page: Page }> = [
+     { icon: LayoutDashboard, label: '仪表盘', page: 'dashboard' },
+     { icon: MessageSquare, label: '会话', page: 'session' },
+     { icon: Users, label: '多 Agent', page: 'project' },
+-    { icon: Settings, label: '设置', page: 'dashboard' },
++    { icon: Settings, label: '设置', page: 'settings' },
+   ];
+ 
+   return (
+     <div className="app-shell">
+@@ -271,8 +371,13 @@ export default function App() {
+               {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+             </button>
+           </div>
+ 
++          <button type="button" className="new-task-btn" onClick={handleNewSession}>
++            <Plus size={16} />
++            新建任务
++          </button>
++
+           <nav className="sidebar-nav">
+             {NAV_ITEMS.map((item) => (
+               <button
+                 key={item.label}
+@@ -285,13 +390,68 @@ export default function App() {
+               </button>
+             ))}
+           </nav>
+ 
++          <div className="sidebar-sessions">
++            <div className="sessions-header">
++              <History size={12} />
++              <span>最近会话</span>
++            </div>
++            <div className="sidebar-search">
++              <Search size={14} />
++              <input
++                type="text"
++                placeholder="搜索会话…"
++                value={sessionQuery}
++                onChange={(e) => setSessionQuery(e.target.value)}
++              />
++            </div>
++            {loading && <div className="sessions-loading">加载中…</div>}
++            {(error || detailError) && (
++              <div className="sessions-error">
++                {error ?? detailError}
++                <button type="button" className="header-btn" onClick={() => void refresh()}>重试</button>
++              </div>
++            )}
++            {!loading && !error && filteredSessions.length === 0 && (
++              <div className="sessions-empty">暂无历史会话</div>
++            )}
++            <ul className="session-list">
++              {filteredSessions.map((s) => {
++                const badge = statusBadge(s.status);
++                return (
++                  <li key={s.id}>
++                    <button
++                      type="button"
++                      className={`session-item ${activeSessionId === s.id ? 'active' : ''}`}
++                      onClick={() => void handleSelectSession(s.id)}
++                    >
++                      <span className="session-task">{s.task}</span>
++                      <span className="session-meta">
++                        <span className={`badge ${badge.className}`}>{badge.label}</span>
++                        <span>{s.rounds} 轮</span>
++                        <span className="session-time">{relativeTime(s.created_at)}</span>
++                      </span>
++                    </button>
++                    <button
++                      type="button"
++                      className="session-delete"
++                      onClick={() => void handleDeleteSession(s.id)}
++                      aria-label={`删除会话：${s.task}`}
++                    >
++                      <Trash2 size={12} />
++                    </button>
++                  </li>
++                );
++              })}
++            </ul>
++          </div>
++
+           <div className="sidebar-footer">
+             <div className="user-avatar">U</div>
+             <div className="user-info">
+               <div className="user-name">开发者</div>
+-              <div className="user-plan">Pro 计划</div>
++              <div className="user-plan">{connected ? '已连接' : '未连接'}</div>
+             </div>
+           </div>
+         </aside>
+ 
+@@ -299,81 +459,81 @@ export default function App() {
+           {page === 'dashboard' && (
+             <div className="page-dashboard">
+               <div className="dashboard-header">
+                 <h1 className="dashboard-title">仪表盘</h1>
+-                <p className="dashboard-subtitle">监控你的 Agent 工作负载和项目状态</p>
++                <p className="dashboard-subtitle">基于真实会话数据的工作负载概览</p>
+               </div>
+ 
+               <div className="stats-grid">
+                 <div className="stat-card">
+-                  <div className="stat-label">活跃会话</div>
++                  <div className="stat-label">会话总数</div>
+                   <div className="stat-value">{sessions.length}</div>
+-                  <div className="stat-change up">+12% 本周</div>
++                  <div className="stat-change up">来自 SQLite</div>
+                 </div>
+                 <div className="stat-card">
+                   <div className="stat-label">完成任务</div>
+-                  <div className="stat-value">{sessions.filter(s => s.status === 'completed').length}</div>
+-                  <div className="stat-change up">+8% 本周</div>
++                  <div className="stat-value">{completedCount}</div>
++                  <div className="stat-change up">
++                    {sessions.length ? `${Math.round((completedCount / sessions.length) * 100)}%` : '0%'} 完成率
++                  </div>
+                 </div>
+                 <div className="stat-card">
+-                  <div className="stat-label">工具调用</div>
+-                  <div className="stat-value">156</div>
+-                  <div className="stat-change up">+23% 本周</div>
++                  <div className="stat-label">失败 / 超限</div>
++                  <div className="stat-value">{errorCount}</div>
++                  <div className={`stat-change ${errorCount ? 'down' : 'up'}`}>
++                    {errorCount ? '需关注' : '状态良好'}
++                  </div>
+                 </div>
+                 <div className="stat-card">
+-                  <div className="stat-label">Token 用量</div>
+-                  <div className="stat-value">90k</div>
+-                  <div className="stat-change down">-5% 本周</div>
++                  <div className="stat-label">累计轮次</div>
++                  <div className="stat-value">{totalRounds}</div>
++                  <div className="stat-change up">当前轮次 {currentRound} · 工具 {toolCallCount}</div>
+                 </div>
+               </div>
+ 
+-              <h2 className="section-title">最近项目</h2>
++              <h2 className="section-title">最近会话</h2>
+               <div className="projects-grid">
+-                <div className="project-card" onClick={() => setPage('project')}>
+-                  <div className="project-icon blue"><Zap size={20} /></div>
+-                  <div className="project-name">Coding Agent Harness</div>
+-                  <div className="project-desc">AI 编码智能体系统，支持反馈闭环和工具治理</div>
+-                  <div className="project-meta">
+-                    <span className="project-status"><span className="status-dot active" /> 活跃</span>
+-                    <span>更新于 2 小时前</span>
+-                  </div>
+-                </div>
+-                <div className="project-card" onClick={() => setPage('project')}>
+-                  <div className="project-icon purple"><GitBranch size={20} /></div>
+-                  <div className="project-name">WebUI 重构</div>
+-                  <div className="project-desc">前端界面重新设计，支持多主题和响应式布局</div>
+-                  <div className="project-meta">
+-                    <span className="project-status"><span className="status-dot idle" /> 空闲</span>
+-                    <span>更新于 1 天前</span>
+-                  </div>
+-                </div>
+-                <div className="project-card" onClick={() => setPage('project')}>
+-                  <div className="project-icon cyan"><CheckCircle2 size={20} /></div>
+-                  <div className="project-name">测试覆盖率提升</div>
+-                  <div className="project-desc">为核心模块添加单元测试和集成测试</div>
+-                  <div className="project-meta">
+-                    <span className="project-status"><span className="status-dot active" /> 活跃</span>
+-                    <span>更新于 3 天前</span>
++                {sessions.slice(0, 6).map((s) => {
++                  const badge = statusBadge(s.status);
++                  return (
++                    <div key={s.id} className="project-card" onClick={() => void handleSelectSession(s.id)}>
++                      <div className="project-icon blue"><Zap size={20} /></div>
++                      <div className="project-name">{s.task}</div>
++                      <div className="project-desc">{s.rounds} 轮 · {relativeTime(s.created_at)}</div>
++                      <div className="project-meta">
++                        <span className={`badge ${badge.className}`}>{badge.label}</span>
++                      </div>
++                    </div>
++                  );
++                })}
++                {sessions.length === 0 && (
++                  <div className="project-card" onClick={handleNewSession}>
++                    <div className="project-icon purple"><Plus size={20} /></div>
++                    <div className="project-name">还没有会话</div>
++                    <div className="project-desc">点击新建任务，开始第一次 Agent 运行</div>
+                   </div>
+-                </div>
++                )}
+               </div>
+             </div>
+           )}
+ 
+           {page === 'session' && (
+             <div className="page-session">
+               <div className="session-header">
+                 <div className="session-header-left">
+-                  <h2 className="session-title">{review ? review.task : '新会话'}</h2>
++                  <h2 className="session-title">{activeSessionTask ?? '新会话'}</h2>
++                  {activeSessionId != null && (
++                    <span className="session-resume-badge">续跑 · #{activeSessionId}</span>
++                  )}
+                   <span className={`session-status ${status}`}>
+                     {status === 'running' ? `运行中 · 第 ${currentRound} 轮` : status}
+                   </span>
+                 </div>
+                 <div className="session-header-right">
+                   <button type="button" className="header-btn" onClick={() => setPage('dashboard')}>
+                     返回
+                   </button>
+-                  <button type="button" className="header-btn" onClick={() => setReview(null)}>
++                  <button type="button" className="header-btn" onClick={handleNewSession}>
+                     <RotateCcw size={14} />
+                     新会话
+                   </button>
+                 </div>
+@@ -381,52 +541,68 @@ export default function App() {
+ 
+               <div className="session-content">
+                 <div className="chat-panel">
+                   <div className="chat-messages">
+-                    {items.length === 0 && !review && (
++                    {items.length === 0 && (
+                       <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '40px' }}>
+                         <p>输入任务开始与 Agent 对话</p>
+                       </div>
+                     )}
+                     {items.map((item) =>
+                       item.kind === 'user' ? (
+                         <div key={item.id} className="message user">
+                           <div className="message-bubble">{item.text}</div>
+-                          <div className="message-meta">你 · 刚刚</div>
++                          <div className="message-meta">你</div>
+                         </div>
+                       ) : (
+                         <div key={item.id} className="message agent">
+                           <div className="message-bubble">{item.text}</div>
+                           {item.actions && item.actions.length > 0 && (
+                             <div className="tool-call-card">
+                               <div className="tool-call-header">
+                                 <Zap size={14} className="tool-call-icon" />
+-                                <span>工具调用</span>
++                                <span>工具调用 · {item.actions.length}</span>
+                               </div>
+                               <div className="tool-call-body">
+                                 {item.actions.map((a, i) => (
+-                                  <div key={i}>{a.tool}: {a.result}</div>
++                                  <div key={i}>
++                                    <strong>{a.tool}</strong>
++                                    {'\n'}
++                                    {a.result}
++                                  </div>
+                                 ))}
+                               </div>
+-                              <div className="tool-call-result success">
++                              <div className={`tool-call-result ${item.feedbackStatus === 'fail' ? 'error' : 'success'}`}>
+                                 <CheckCircle2 size={12} />
+-                                执行成功
++                                {item.feedbackStatus === 'fail' ? '反馈失败' : '执行完成'}
+                               </div>
+                             </div>
+                           )}
+-                          <div className="message-meta">Agent · 第 {item.round} 轮</div>
++                          <div className="message-meta">
++                            {item.agentRole ? (
++                              <span className={`role-badge ${roleBadgeClass(item.agentRole)}`}>{item.agentRole}</span>
++                            ) : (
++                              'Agent'
++                            )}
++                            {' · 第 '}{item.round}{' 轮'}
++                          </div>
+                         </div>
+                       ),
+                     )}
+-                    {end && (
++                    {result && (
+                       <div className="message agent">
+                         <div className="message-bubble">
+-                          <strong>{end.status === 'completed' ? '任务完成' : end.status}</strong>
++                          <strong>{result.status === 'completed' ? '任务完成' : result.status}</strong>
+                           <br />
+-                          共 {end.rounds} 轮
++                          共 {result.rounds} 轮
+                         </div>
+                       </div>
+                     )}
++                    {rollbackMsg && (
++                      <div className="message agent">
++                        <div className="message-bubble">{rollbackMsg}</div>
++                      </div>
++                    )}
+                   </div>
+ 
+                   <div className="chat-input-area">
+                     {attachedFiles.length > 0 && (
+@@ -445,73 +621,49 @@ export default function App() {
+                       onDragOver={handleDragOver}
+                       onDragLeave={handleDragLeave}
+                       onDrop={handleDrop}
+                     >
+-                      <input
+-                        ref={fileInputRef}
+-                        type="file"
+-                        multiple
+-                        hidden
+-                        onChange={handleFiles}
+-                      />
+-                      <button
+-                        type="button"
+-                        className="composer-icon"
+-                        onClick={handleAttach}
+-                        disabled={busy || Boolean(review)}
+-                      >
++                      <input ref={fileInputRef} type="file" multiple hidden onChange={handleFiles} />
++                      <button type="button" className="composer-icon" onClick={handleAttach} disabled={busy}>
+                         <Paperclip size={18} />
+                       </button>
+                       <div className="prompt-wrap">
+                         <textarea
+                           value={task}
+                           onChange={(e) => setTask(e.target.value)}
+                           onKeyDown={handleKeyDown}
+-                          placeholder={review ? '回顾模式中…' : '输入编码任务…'}
+-                          disabled={busy || Boolean(review)}
++                          placeholder={activeSessionId != null ? '继续输入以接着干…' : '输入编码任务…'}
++                          disabled={busy}
+                           rows={1}
+                         />
+                       </div>
+-                      <button
+-                        type="button"
+-                        className="composer-icon"
+-                        disabled={busy || Boolean(review)}
+-                      >
++                      <button type="button" className="composer-icon" disabled={busy} title="语音输入（待接入）">
+                         <Mic size={18} />
+                       </button>
+                       <div className="composer-actions">
+                         <div className="model-select">
+-                          <button
+-                            type="button"
+-                            className="model-trigger"
+-                            onClick={() => setModelMenuOpen((v) => !v)}
+-                            disabled={busy}
+-                          >
++                          <button type="button" className="model-trigger" onClick={() => setModelMenuOpen((v) => !v)} disabled={busy}>
+                             {model} <ChevronDown size={12} />
+                           </button>
+                           {modelMenuOpen && (
+                             <ul className="model-menu">
+                               {MODELS.map((m) => (
+                                 <li key={m}>
+-                                  <button type="button" onClick={() => { setModel(m); setModelMenuOpen(false); }}>
+-                                    {m}
+-                                  </button>
++                                  <button type="button" onClick={() => { setModel(m); setModelMenuOpen(false); }}>{m}</button>
+                                 </li>
+                               ))}
+                             </ul>
+                           )}
+                         </div>
+                         <button
+                           type="submit"
+                           className="send-btn"
+-                          disabled={busy || !connected || Boolean(review) || (!task.trim() && attachedFiles.length === 0)}
++                          disabled={busy || !connected || (!task.trim() && attachedFiles.length === 0)}
+                         >
+                           <Send size={16} />
+                         </button>
+                         {busy && (
+-                          <button type="button" className="header-btn" onClick={cancel}>
+-                            取消
+-                          </button>
++                          <button type="button" className="header-btn" onClick={cancel}>取消</button>
+                         )}
+                       </div>
+                     </form>
+                   </div>
+@@ -522,42 +674,80 @@ export default function App() {
+                     <h3 className="context-section-title">
+                       <Folder size={14} />
+                       项目文件
+                     </h3>
+-                    <div className="file-tree">
+-                      {MOCK_FILE_TREE.map((node) => (
+-                        <FileTreeNode key={node.path} node={node} depth={0} />
+-                      ))}
+-                    </div>
++                    {selectedFile ? (
++                      <div className="file-viewer">
++                        <div className="file-viewer-head">
++                          <span className="file-viewer-path" title={selectedFile.path}>{selectedFile.path}</span>
++                          <button
++                            type="button"
++                            className="file-viewer-close"
++                            onClick={() => setSelectedFile(null)}
++                            aria-label="关闭文件查看器"
++                          >
++                            <X size={14} />
++                          </button>
++                        </div>
++                        <pre className="file-viewer-content">{selectedFile.content}</pre>
++                      </div>
++                    ) : (
++                      <>
++                        {fileTreeError && <div className="sessions-error">{fileTreeError}</div>}
++                        {fileViewerError && <div className="sessions-error">{fileViewerError}</div>}
++                        {!fileTreeError && fileTree.length === 0 && (
++                          <div className="sessions-empty">加载文件树中…</div>
++                        )}
++                        <div className="file-tree">
++                          {fileTree.map((node) => (
++                            <FileTreeNodeView
++                              key={node.path}
++                              node={node}
++                              depth={0}
++                              modifiedPaths={modifiedPaths}
++                              selectedPath={null}
++                              onFileClick={(path) => void handleFileClick(path)}
++                            />
++                          ))}
++                        </div>
++                      </>
++                    )}
+                   </div>
+ 
+                   <div className="context-section">
+                     <h3 className="context-section-title">
+                       <Clock size={14} />
+-                      Token 用量
++                      运行指标
+                     </h3>
+                     <div className="token-bar">
+                       <div className="token-label">
+-                        <span>已使用</span>
+-                        <span>90k / 200k</span>
++                        <span>当前轮次</span>
++                        <span>{currentRound}</span>
++                      </div>
++                      <div className="token-label">
++                        <span>工具调用</span>
++                        <span>{toolCallCount}</span>
+                       </div>
+-                      <div className="token-track">
+-                        <div className="token-fill" style={{ width: '45%' }} />
++                      <div className="token-label">
++                        <span>变更文件</span>
++                        <span>{checkpoint?.files.length ?? 0}</span>
+                       </div>
+                     </div>
+                   </div>
+ 
+                   <div className="context-section">
+                     <h3 className="context-section-title">
+                       <RotateCcw size={14} />
+-                      检查点
++                      检查点 / Diff
+                     </h3>
+-                    <div className="checkpoint-card">
+-                      <div className="checkpoint-hash">a1b2c3d4e5f6</div>
+-                      <button type="button" className="checkpoint-btn">
+-                        回滚到此检查点
+-                      </button>
+-                    </div>
++                    <DiffPanel
++                      checkpoint={checkpoint}
++                      onRolledBack={() => {
++                        clearCheckpoint();
++                        setRollbackMsg('已回滚到任务开始时的检查点');
++                        void listWorkspaceFiles().then(setFileTree).catch(() => undefined);
++                      }}
++                    />
+                   </div>
+                 </div>
+               </div>
+             </div>
+@@ -567,60 +757,156 @@ export default function App() {
+             <div className="page-project">
+               <div className="project-header">
+                 <h1 className="project-title">Coding Agent Harness</h1>
+                 <div className="project-actions">
+-                  <button type="button" className="header-btn">
++                  <button type="button" className="header-btn" onClick={() => setPage('settings')}>
+                     <Settings size={14} />
+                     配置
+                   </button>
+-                  <button type="button" className="header-btn" onClick={() => setPage('session')}>
++                  <button type="button" className="header-btn" onClick={handleNewSession}>
+                     <Plus size={14} />
+                     新会话
+                   </button>
+                 </div>
+               </div>
+ 
++              <div className="orchestrate-form">
++                <textarea
++                  value={orchestrateTask}
++                  onChange={(e) => setOrchestrateTask(e.target.value)}
++                  placeholder="输入编排任务…"
++                  rows={2}
++                  disabled={busy}
++                />
++                <div className="orchestrate-controls">
++                  <label className="orchestrate-retries">
++                    最大重试
++                    <input
++                      type="number"
++                      min={0}
++                      max={10}
++                      value={maxRetries}
++                      onChange={(e) => setMaxRetries(Math.max(0, Number(e.target.value) || 0))}
++                      disabled={busy}
++                    />
++                  </label>
++                  <button
++                    type="button"
++                    className="orchestrate-start"
++                    onClick={handleStartOrchestrate}
++                    disabled={busy || !connected || !orchestrateTask.trim()}
++                  >
++                    <Send size={14} />
++                    启动编排
++                  </button>
++                </div>
++                {orchestratorStatus && (
++                  <div className="orchestrator-meta">
++                    <span>阶段：{orchestratorStatus.phase}</span>
++                    <span>重试 {orchestratorStatus.retryCount}/{orchestratorStatus.maxRetries}</span>
++                    {orchestratorStatus.lastGate && (
++                      <span className="orchestrator-gate">
++                        门禁：{orchestratorStatus.lastGate.from} — {orchestratorStatus.lastGate.reason}
++                      </span>
++                    )}
++                  </div>
++                )}
++              </div>
++
+               <div className="agents-grid">
+-                {MOCK_AGENTS.map((agent) => (
+-                  <div key={agent.name} className="agent-card">
+-                    <div className="agent-header">
+-                      <div className={`agent-avatar ${agent.name.includes('Coder') ? 'blue' : agent.name.includes('Reviewer') ? 'purple' : 'green'}`}>
+-                        {agent.name[0]}
+-                      </div>
+-                      <div className="agent-info">
+-                        <div className="agent-name">{agent.name}</div>
+-                        <div className="agent-role">{agent.role}</div>
+-                      </div>
+-                      <div className={`agent-status ${agent.status}`}>
+-                        <StatusDot status={agent.status} />
+-                        {agent.status === 'online' ? '在线' : agent.status === 'thinking' ? '思考中' : '空闲'}
++                {ORCHESTRATOR_ROLES.map((agent) => {
++                  const roleStatus = orchestratorStatus?.roles[agent.key] ?? 'idle';
++                  return (
++                    <div key={agent.key} className={`agent-card role-${roleStatus}`}>
++                      <div className="agent-header">
++                        <div className={`agent-avatar ${agent.avatar}`}>{agent.name[0]}</div>
++                        <div className="agent-info">
++                          <div className="agent-name">{agent.name}</div>
++                          <div className="agent-role">{agent.desc}</div>
++                        </div>
++                        <div className={`agent-status role-${roleStatus}`}>
++                          <RoleStatusDot status={roleStatus} />
++                          {roleStatusLabel(roleStatus)}
++                        </div>
+                       </div>
+                     </div>
+-                    <div className="agent-metrics">
+-                      <div className="metric-item">
+-                        <div className="metric-value">{agent.tasks}</div>
+-                        <div className="metric-label">完成任务</div>
+-                      </div>
+-                      <div className="metric-item">
+-                        <div className="metric-value">{agent.success}%</div>
+-                        <div className="metric-label">成功率</div>
++                  );
++                })}
++              </div>
++
++              <h2 className="section-title">真实会话活动</h2>
++              <div className="activity-feed">
++                {sessions.slice(0, 8).map((s) => {
++                  const badge = statusBadge(s.status);
++                  return (
++                    <div key={s.id} className="activity-item">
++                      <div className={`activity-icon ${badge.className === 'ok' ? 'green' : 'blue'}`}>◆</div>
++                      <div className="activity-content">
++                        <div className="activity-text">{s.task}</div>
++                        <div className="activity-time">{badge.label} · {s.rounds} 轮 · {relativeTime(s.created_at)}</div>
+                       </div>
+                     </div>
+-                  </div>
+-                ))}
++                  );
++                })}
++                {sessions.length === 0 && (
++                  <div className="sessions-empty">暂无活动记录</div>
++                )}
+               </div>
++            </div>
++          )}
+ 
+-              <h2 className="section-title">最近活动</h2>
+-              <div className="activity-feed">
+-                {MOCK_ACTIVITIES.map((activity, i) => (
+-                  <div key={i} className="activity-item">
+-                    <div className={`activity-icon ${activity.type}`}>{activity.icon}</div>
+-                    <div className="activity-content">
+-                      <div className="activity-text">{activity.text}</div>
+-                      <div className="activity-time">{activity.time}</div>
++          {page === 'settings' && (
++            <div className="page-dashboard">
++              <div className="dashboard-header">
++                <h1 className="dashboard-title">设置</h1>
++                <p className="dashboard-subtitle">主题、连接状态与运行环境</p>
++              </div>
++
++              <div className="settings-grid">
++                <div className="stat-card">
++                  <div className="stat-label">外观主题</div>
++                  <div className="settings-row">
++                    <span>{theme === 'light' ? '浅色模式' : '深色模式'}</span>
++                    <button type="button" className="header-btn" onClick={toggleTheme}>
++                      {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
++                      切换
++                    </button>
++                  </div>
++                </div>
++                <div className="stat-card">
++                  <div className="stat-label">后端连接</div>
++                  <div className="settings-row">
++                    <span>{connected ? 'WebSocket 已连接' : '未连接'}</span>
++                    <span className={`badge ${connected ? 'ok' : 'bad'}`}>{connected ? '在线' : '离线'}</span>
++                  </div>
++                </div>
++                <div className="stat-card">
++                  <div className="stat-label">默认模型</div>
++                  <div className="settings-row">
++                    <span>{model}</span>
++                    <div className="model-select">
++                      <button type="button" className="model-trigger" onClick={() => setModelMenuOpen((v) => !v)}>
++                        更换 <ChevronDown size={12} />
++                      </button>
++                      {modelMenuOpen && (
++                        <ul className="model-menu">
++                          {MODELS.map((m) => (
++                            <li key={m}>
++                              <button type="button" onClick={() => { setModel(m); setModelMenuOpen(false); }}>{m}</button>
++                            </li>
++                          ))}
++                        </ul>
++                      )}
+                     </div>
+                   </div>
+-                ))}
++                </div>
++                <div className="stat-card">
++                  <div className="stat-label">会话存储</div>
++                  <div className="settings-row">
++                    <span>{sessions.length} 条记录</span>
++                    <button type="button" className="header-btn" onClick={() => void refresh()}>刷新</button>
++                  </div>
++                </div>
+               </div>
+             </div>
+           )}
+         </main>
+

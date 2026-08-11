@@ -1,26 +1,31 @@
-# Task 4 Report: Tool Interface and Dispatcher
+# Task 4 Report: Role registry + tool allowlist
 
-## What was implemented
+## Status
+**Complete**
 
-Created the tool abstraction layer:
+## Changes
+- `src/orchestration/roles.ts`: `AgentRole`, `RoleDefinition`, `ROLE_DEFINITIONS` (coder/reviewer/tester with bilingual prompts), `filterToolsForRole`.
+- `tests/orchestration/roles.test.ts`: Tool isolation and systemPrompt coverage.
 
-- **`src/tools/base.ts`**: `Tool` interface with `name`, `description`, `parameters` (ToolParameter), and `execute(args)` method. `ToolParameter` supports nested properties, required fields, and enum values for OpenAI-compatible tool definitions.
-- **`src/tools/dispatcher.ts`**: `ToolDispatcher` class that stores tools in a `Map<string, Tool>` keyed by name. Provides `dispatch(name, args)` for tool execution and `getDefinitions()` for generating OpenAI-format tool definitions suitable for LLM function-calling context.
+## Tool allowlists (verified against `src/index.ts`)
+| Role | Tools |
+|------|-------|
+| coder | read_file, write_file, delete_file, shell, search, git_diff, run_test |
+| reviewer | read_file, search, git_diff |
+| tester | read_file, run_test, search, git_diff |
 
-## What was tested and test results
+## Commits
+- `feat(orchestration): role registry with tool allowlists`
 
-- **3 tests, all passing**: dispatching to the correct tool by name, throwing on unknown tool, and returning properly formatted tool definitions for LLM context.
-- **Test file**: `tests/tools/dispatcher.test.ts`
+## Tests
+```
+✓ tests/orchestration/roles.test.ts (4 tests)
+4/4 passed
+```
 
-## Files changed
+## TDD
+1. RED: import failed — `roles.ts` missing
+2. GREEN: implemented registry + filter; all 4 tests pass
 
-| File | Action |
-|------|--------|
-| `src/tools/base.ts` | Created |
-| `src/tools/dispatcher.ts` | Created |
-| `tests/tools/dispatcher.test.ts` | Created |
-
-## Issues or concerns
-
-- **CRLF warnings**: Git warned about LF-to-CRLF conversion on Windows for all three new files. Cosmetic only — does not affect functionality.
-- **Vite CJS deprecation**: `npx vitest` warns about the CJS build of Vite's Node API being deprecated. Non-blocking and consistent with prior tasks.
+## Concerns
+- None. Tester uses `git_diff` instead of `shell` per brief preference.

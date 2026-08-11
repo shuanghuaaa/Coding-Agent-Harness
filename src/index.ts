@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   if (Number.isNaN(port)) {
     throw new Error(`Invalid PORT value: ${process.env.PORT}`);
   }
-  new HarnessServer(loop, port, sessionStore);
+  new HarnessServer(loop, port, sessionStore, workspaceRoot);
 
   process.on('SIGTERM', () => {
     logger.info('Shutting down...');

@@ -8,6 +8,10 @@ export function setWorkspaceRoot(root: string): void {
   workspaceRoot = root;
 }
 
+export function getWorkspaceRoot(): string {
+  return workspaceRoot;
+}
+
 export function resolveWorkspacePath(inputPath: string, root: string = workspaceRoot): string {
   const resolved = path.resolve(root, inputPath);
   const relative = path.relative(path.resolve(root), resolved);

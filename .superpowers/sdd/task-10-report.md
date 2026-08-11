@@ -29,3 +29,5 @@ cd webui; npm run build
 
 ## Commit
 `fix: preserve session task, wire changedFiles, hydrate multi-turn chat`
+
+**SHA:** `59873f15810b63e288fa88584fe2a110710c220d`

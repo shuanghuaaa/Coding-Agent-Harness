@@ -1,41 +1,118 @@
-# Task 1 Report: Initialize Project
+# Task 1 Report: Workspace file read API
 
-## What was implemented
+## Status
 
-Scaffolded the Coding Agent Harness project with a full TypeScript project skeleton including:
+**DONE**
 
-- **Project structure**: Created all source directories (`src/agent`, `src/llm`, `src/tools`, `src/feedback`, `src/guard`, `src/memory`, `src/config`, `src/credentials`, `src/server`), test directories (`tests/agent`, `tests/llm`, `tests/tools`, `tests/feedback`, `tests/guard`, `tests/memory`, `tests/config`, `tests/credentials`, `tests/integration`), and web UI directories (`webui/src/components`, `webui/src/hooks`).
-- **package.json**: Configured with all runtime dependencies (better-sqlite3, dotenv, express, keytar, uuid, ws) and dev dependencies (TypeScript, Vitest, tsx, type definitions).
-- **tsconfig.json**: Strict mode TypeScript config targeting ES2022 with CommonJS modules, source maps, declarations, and declaration maps.
-- **vitest.config.ts**: Vitest configured with globals, node environment, and v8 coverage provider.
-- **.gitignore**: Excludes node_modules, dist, database files, .env, credentials, and .DS_Store.
-- **.dockerignore**: Excludes node_modules, dist, tests, database files, .env, .git, vitest config, and tsconfig.
-- **Dockerfile**: Multi-stage build using node:20-alpine, builder stage compiles TypeScript, runtime stage copies only dist and node_modules.
-- **docker-compose.yml**: Defines harness service with port 3000, volume for data persistence, and production environment.
+## Commit
 
-## What was tested and test results
+- `ce0bd01` — `feat(workspace): add safe read-file API for WebUI`
+- Files committed (task-1 only):
+  - `src/tools/file-tools.ts`
+  - `src/workspace/read-file.ts`
+  - `src/server/http-server.ts` (task-1 route + minimal supporting changes)
+  - `tests/workspace/read-file.test.ts`
 
-- **npm install**: Successful. All dependencies installed. Two deprecation warnings (prebuild-install and uuid@9) — non-blocking.
-- **vitest run**: Ran successfully. Output: "No test files found" — expected at this stage since no test files exist yet. The exit code 1 is vitest's standard behavior when no tests are found.
+Other uncommitted work (checkpoint, file-tree, WebUI, etc.) was left unstaged. Working-tree `http-server.ts` was restored to include parallel WIP after commit.
 
-## Files changed
+## TDD Evidence
 
-| File | Action |
+### RED — failing test (module not found)
+
+```
+> npm test -- tests/workspace/read-file.test.ts
+
+ FAIL  tests/workspace/read-file.test.ts
+Error: Failed to load url ../../src/workspace/read-file ... Does the file exist?
+
+ Test Files  1 failed (1)
+      Tests  no tests
+```
+
+### GREEN — all tests pass
+
+```
+> npm test -- tests/workspace/read-file.test.ts
+
+ ✓ tests/workspace/read-file.test.ts  (3 tests) 30ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+```
+
+## Implementation Summary
+
+| Item | Detail |
 |------|--------|
-| `package.json` | Created |
-| `package-lock.json` | Created (by npm install) |
-| `tsconfig.json` | Created |
-| `vitest.config.ts` | Created |
-| `.gitignore` | Created |
-| `.dockerignore` | Created |
-| `Dockerfile` | Created |
-| `docker-compose.yml` | Created |
-| `src/` (all subdirectories) | Created |
-| `tests/` (all subdirectories) | Created |
-| `webui/` (all subdirectories) | Created |
+| `resolveWorkspacePath` | Exported from `file-tools.ts`; internal `resolvePath` delegates to it |
+| `readWorkspaceFile` | Resolves path safely, stats file, enforces 1 MiB max, rejects binary (NUL byte), returns `{ path, content, size }` |
+| `GET /api/workspace/file` | Query param `path`; maps errors to 400/404/415/500 |
 
-## Issues or concerns
+## Self-Review
 
-- **vitest exit code 1**: When no test files are found, vitest exits with code 1. This is expected and not an error. Once tests are added, this will resolve.
-- **npm deprecation warnings**: `prebuild-install@7.1.3` and `uuid@9.0.1` have deprecation notices. These are non-blocking but should be monitored as the project matures.
-- **CRLF warnings**: Git warned about LF-to-CRLF conversion on Windows. This is cosmetic and only affects line endings in the working tree — the repository contents remain correct.
+### Matches brief
+
+- Test file matches brief verbatim (3 cases: read, traversal, missing).
+- `readWorkspaceFile` signature and logic match brief.
+- HTTP route and error status mapping match brief.
+- `resolveWorkspacePath` exported with correct traversal guard.
+
+### Supporting http-server changes (in commit)
+
+The committed `http-server.ts` diff also includes:
+
+- `workspaceRoot` constructor parameter (required by route handler)
+- `requireToken` hoisted outside `sessionStore` block (so workspace route works without session store)
+
+These are minimal prerequisites not listed explicitly in the brief but necessary for the route to function.
+
+### Not covered by tests (implementation only)
+
+- File too large → throws `File too large`
+- Binary file (NUL byte) → throws `binary file not supported`
+- HTTP route integration (no supertest coverage in this task)
+
+### Concerns
+
+1. **Working tree vs commit:** Restored `http-server.ts` includes checkpoint/file-tree routes from other tasks; differs from committed version until those tasks merge.
+2. **No route tests:** HTTP layer untested; relies on unit tests for `readWorkspaceFile`.
+3. **Binary/large edge cases:** Implemented per brief but not exercised by tests.
+
+## Verification
+
+```
+npm test -- tests/workspace/read-file.test.ts  → 3/3 passed (post-restore)
+```
+
+---
+
+## Review Fix (2026-08-10)
+
+### Status
+
+**DONE**
+
+### Commit
+
+- `6fda8ae` — `fix(workspace): map directory reads to 400 and test size/binary gates`
+- Files committed:
+  - `src/server/http-server.ts` — added `/not a file/i` to 400 status regex
+  - `tests/workspace/read-file.test.ts` — added too-large and binary rejection tests; removed unused `mkdirSync` import
+
+### Changes
+
+1. **Directory reads → HTTP 400:** `GET /api/workspace/file` now maps `Not a file:` errors to 400 (same branch as traversal/blocked).
+2. **New unit tests:**
+   - `rejects files larger than maxBytes` — temp file > 1 MiB
+   - `rejects binary files` — temp file with NUL byte
+
+### Verification
+
+```
+> $env:Path = 'D:\software\node;' + $env:Path; npm test -- tests/workspace/read-file.test.ts
+
+ ✓ tests/workspace/read-file.test.ts  (5 tests) 53ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+```

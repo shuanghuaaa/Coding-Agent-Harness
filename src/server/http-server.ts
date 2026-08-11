@@ -10,6 +10,8 @@ import type { WSMessage } from './types';
 import { WorkspaceCheckpoint, type Checkpoint, type CheckpointDiff } from '../workspace/checkpoint';
 import { buildFileTree } from '../workspace/file-tree';
 import { readWorkspaceFile } from '../workspace/read-file';
+import { assertDirectory, browseDirectory } from '../workspace/browse';
+import { setWorkspaceRoot } from '../tools/file-tools';
 import { Orchestrator } from '../orchestration/orchestrator';
 import type { OrchestrationResult } from '../orchestration/orchestrator';
 import { filterToolsForRole, ROLE_DEFINITIONS } from '../orchestration/roles';
@@ -37,6 +39,7 @@ export class HarnessServer {
   private sessionStore?: SessionStore;
   private checkpoint: WorkspaceCheckpoint;
   private workspaceRoot: string;
+  private initialWorkspaceRoot: string;
   private token: string;
   private pendingHITL: Map<string, PendingHITL> = new Map();
   private runningLoops: Map<WebSocket, Cancellable> = new Map();
@@ -52,6 +55,7 @@ export class HarnessServer {
     this.loop = loop;
     this.sessionStore = sessionStore;
     this.workspaceRoot = workspaceRoot;
+    this.initialWorkspaceRoot = workspaceRoot;
     this.checkpoint = new WorkspaceCheckpoint(workspaceRoot);
     this.token = process.env.HARNESS_TOKEN || '';
 
@@ -142,6 +146,43 @@ export class HarnessServer {
       }
     });
 
+    this.app.get('/api/workspace/root', requireToken, (_req, res) => {
+      res.json({ path: this.workspaceRoot });
+    });
+
+    this.app.post('/api/workspace/root', requireToken, (req, res) => {
+      if (req.body?.clear === true) {
+        this.setWorkspace(this.initialWorkspaceRoot);
+        res.json({ path: this.workspaceRoot, cleared: true });
+        return;
+      }
+      const raw = typeof req.body?.path === 'string' ? req.body.path : '';
+      if (!raw.trim()) {
+        res.status(400).json({ error: 'missing path' });
+        return;
+      }
+      try {
+        const abs = assertDirectory(raw);
+        this.setWorkspace(abs);
+        res.json({ path: this.workspaceRoot });
+      } catch (err) {
+        const msg = String(err);
+        const status = /not found|not a directory/i.test(msg) ? 400 : 500;
+        res.status(status).json({ error: msg });
+      }
+    });
+
+    this.app.get('/api/workspace/browse', requireToken, (req, res) => {
+      const p = typeof req.query.path === 'string' ? req.query.path : '';
+      try {
+        res.json(browseDirectory(p));
+      } catch (err) {
+        const msg = String(err);
+        const status = /not found|not a directory|cannot read/i.test(msg) ? 400 : 500;
+        res.status(status).json({ error: msg });
+      }
+    });
+
     this.app.post('/api/checkpoint/rollback', requireToken, (req, res) => {
       const id = req.body?.id as string | undefined;
       if (!id) {
@@ -201,6 +242,14 @@ export class HarnessServer {
   close(): void {
     this.wss.close();
     this.server.close();
+  }
+
+  private setWorkspace(absPath: string): void {
+    this.workspaceRoot = absPath;
+    setWorkspaceRoot(absPath);
+    this.checkpoint = new WorkspaceCheckpoint(absPath);
+    this.checkpoints.clear();
+    logger.info('Workspace root changed', { path: absPath });
   }
 
   private tryCreateCheckpoint(): Checkpoint | null {

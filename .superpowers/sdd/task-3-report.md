@@ -1,26 +1,42 @@
-# Task 3 Report: LLMProvider Interface and MockLLM
+# Task 3 Report: AgentLoop resume via priorMessages
 
-## What was implemented
+## Status
+**Complete**
 
-Created the LLM provider abstraction layer:
+## Changes
+- `src/agent/loop.ts`: Added `RunOptions` (`priorMessages`, `agentRole`), extended `RoundProgress` with `agentRole`, updated `run()` to prepend non-system prior messages before the new user turn, reset `feedbackHistory` per run, propagate `agentRole` in progress events.
+- `tests/agent/loop-resume.test.ts`: New test verifying prior conversation history is preserved and new task appended.
 
-- **`src/llm/provider.ts`**: `LLMProvider` interface with a single `chat(messages: Message[]): Promise<LLMResponse>` method, consuming the `Message` and `LLMResponse` types from `src/agent/types.ts`.
-- **`src/llm/mock-llm.ts`**: `MockLLM` class implementing `LLMProvider`. Preset responses are consumed in order via an internal index. The `receivedMessages` array records every message list passed to `chat()` for test assertions.
+## Commits
+- `feat(agent): resume runs with priorMessages`
 
-## What was tested and test results
+## Tests
+```
+✓ tests/agent/loop-resume.test.ts (1 test)
+✓ tests/agent/loop.test.ts (4 tests)
+5/5 passed
+```
 
-- **3 tests, all passing**: preset response ordering, error on exhausted responses, and message tracking via `receivedMessages`.
-- **Test file**: `tests/llm/mock-llm.test.ts`
+## Concerns
+- ~~Brief suggested `this.cancelled = false` at run start; omitted because it breaks existing `loop.test.ts` ("returns cancelled when cancel() is called" — cancel invoked before run). Pre-run cancel semantics preserved.~~
+- ~~No test yet for `agentRole` on progress events (brief mentions it; only resume message ordering tested).~~
 
-## Files changed
+## Fix (Important finding)
+- `src/agent/loop.ts`: Reset `this.cancelled = false` at start of each `run()` alongside `feedbackHistory` reset.
+- `tests/agent/loop.test.ts`: Replaced pre-run cancel test with "resets cancelled flag at start of each run"; mid-loop cancel test retained.
+- `tests/agent/loop-resume.test.ts`: Added test that `onProgress` receives `agentRole` when `options.agentRole` is set.
 
-| File | Action |
-|------|--------|
-| `src/llm/provider.ts` | Created |
-| `src/llm/mock-llm.ts` | Created |
-| `tests/llm/mock-llm.test.ts` | Created |
+### Commit
+- `fix(agent): reset cancelled flag at start of each run`
 
-## Issues or concerns
+### Tests (after fix)
+```
+✓ tests/agent/loop-resume.test.ts (2 tests)
+✓ tests/agent/loop.test.ts (4 tests)
+6/6 passed
+```
 
-- **CRLF warnings**: Git warned about LF-to-CRLF conversion on Windows. Cosmetic only — does not affect functionality.
-- **Vite CJS deprecation**: `npx vitest` warns about the CJS build of Vite's Node API being deprecated. Non-blocking.
+## TDD
+1. RED: loop-resume test failed (`users` missing `'first'`)
+2. GREEN: priorMessages wiring in `run()`
+3. Regression: loop.test.ts all green after omitting cancelled reset
