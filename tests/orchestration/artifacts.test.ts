@@ -87,8 +87,11 @@ describe('decideGate', () => {
     expect(decideGate(artifact)).toEqual({ action: 'continue' });
   });
 
-  it('continue when parse failed (malformed artifact)', () => {
+  it('retry_artifact when parseOk is false', () => {
     const { artifact } = parseStageOutput('reviewer', 'no structured output', changedFiles);
-    expect(decideGate(artifact)).toEqual({ action: 'continue' });
+    expect(decideGate(artifact, false)).toEqual({
+      action: 'retry_artifact',
+      reason: 'artifact parse failed',
+    });
   });
 });
