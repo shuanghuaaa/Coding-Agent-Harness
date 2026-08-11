@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 export interface DangerousPattern {
   name: string;
   toolName: string;
@@ -7,7 +10,21 @@ export interface DangerousPattern {
   description: string;
 }
 
-export const dangerousPatterns: DangerousPattern[] = [
+interface ConfigPattern {
+  name: string;
+  toolName: string;
+  argKey?: string;
+  pattern: string;
+  severity: 'high' | 'critical';
+  description: string;
+}
+
+interface GuardrailConfig {
+  patterns?: ConfigPattern[];
+  disabled?: string[];
+}
+
+export const BUILTIN_PATTERNS: DangerousPattern[] = [
   {
     name: 'rm_rf',
     toolName: 'shell',
@@ -65,3 +82,35 @@ export const dangerousPatterns: DangerousPattern[] = [
     description: 'Outbound network request',
   },
 ];
+
+export const dangerousPatterns: DangerousPattern[] = BUILTIN_PATTERNS;
+
+function loadGuardrailConfig(): GuardrailConfig {
+  try {
+    const configPath = resolve(process.cwd(), 'guardrail.config.json');
+    const raw = readFileSync(configPath, 'utf-8');
+    return JSON.parse(raw) as GuardrailConfig;
+  } catch {
+    return {};
+  }
+}
+
+export function getEffectivePatterns(): DangerousPattern[] {
+  const config = loadGuardrailConfig();
+  const disabled = new Set(config.disabled ?? []);
+
+  const customPatterns: DangerousPattern[] = (config.patterns ?? []).map((p) => ({
+    ...p,
+    pattern: new RegExp(p.pattern),
+  }));
+
+  const merged = new Map<string, DangerousPattern>();
+  for (const p of BUILTIN_PATTERNS) {
+    merged.set(p.name, p);
+  }
+  for (const p of customPatterns) {
+    merged.set(p.name, p);
+  }
+
+  return [...merged.values()].filter((p) => !disabled.has(p.name));
+}
