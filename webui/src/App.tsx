@@ -833,7 +833,13 @@ export default function App() {
                 onChange={(e) => setSessionQuery(e.target.value)}
               />
             </div>
-            {loading && <div className="sessions-loading">加载中…</div>}
+            {loading && (
+              <div className="sessions-loading">
+                <div className="skeleton-row" style={{ width: '80%', marginBottom: '8px' }} />
+                <div className="skeleton-row" style={{ width: '60%', marginBottom: '8px' }} />
+                <div className="skeleton-row" style={{ width: '70%' }} />
+              </div>
+            )}
             {(error || detailError) && (
               <div className="sessions-error">
                 {error ?? detailError}
@@ -1209,7 +1215,11 @@ export default function App() {
                                         {fileTreeError && <div className="sessions-error">{fileTreeError}</div>}
                                         {fileViewerError && <div className="sessions-error">{fileViewerError}</div>}
                                         {!fileTreeError && fileTree.length === 0 && (
-                                          <div className="sessions-empty">加载文件树中…</div>
+                                          <div className="sessions-empty">
+                                            <div className="skeleton-row" style={{ width: '90%', marginBottom: '8px' }} />
+                                            <div className="skeleton-row" style={{ width: '70%', marginBottom: '8px' }} />
+                                            <div className="skeleton-row" style={{ width: '50%' }} />
+                                          </div>
                                         )}
                                         <div className="file-tree">
                                           {fileTree.map((node) => (

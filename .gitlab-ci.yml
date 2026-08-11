@@ -2,9 +2,21 @@ image: node:22
 
 stages:
   - test
+  - build
 
 unit-test:
   stage: test
   script:
     - npm ci
     - npm test
+
+docker-build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -t harness:latest .
+  only:
+    - main
+    - merge_requests
