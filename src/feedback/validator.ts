@@ -1,8 +1,19 @@
 import { FailureClassifier } from './classifier';
-import type { Feedback } from './types';
+import type { Feedback, TestFailure } from './types';
+import type { TestOutputParser } from './parsers/types';
+import { VitestParser } from './parsers/vitest-parser';
+import { JestParser } from './parsers/jest-parser';
+import { MochaParser } from './parsers/mocha-parser';
+import { GenericParser } from './parsers/generic-parser';
 
 export class FeedbackValidator {
   private classifier = new FailureClassifier();
+  private parsers: TestOutputParser[] = [
+    new VitestParser(),
+    new JestParser(),
+    new MochaParser(),
+    new GenericParser(),
+  ];
 
   validate(
     testOutput: string,
@@ -19,12 +30,8 @@ export class FeedbackValidator {
     }
 
     if (testOutput.includes('FAIL') || testOutput.includes('fail')) {
-      const failureLines = testOutput
-        .split('\n')
-        .filter((line) => line.includes('FAIL'));
-      const failures = failureLines.map((line) =>
-        this.classifier.parseFailure(line)
-      );
+      const failures = this.parseWithChain(testOutput);
+
       return {
         status: 'fail',
         round,
@@ -39,5 +46,15 @@ export class FeedbackValidator {
       summary: 'All tests passed',
       failures: [],
     };
+  }
+
+  private parseWithChain(output: string): TestFailure[] {
+    for (const parser of this.parsers) {
+      if (parser.canParse(output)) {
+        const result = parser.parse(output);
+        if (result.length > 0) return result;
+      }
+    }
+    return [];
   }
 }
