@@ -4,6 +4,7 @@ import { useSessions } from './hooks/useSessions';
 import { getSession } from './api/sessions';
 import { getWorkspaceFile, getWorkspaceRoot, listWorkspaceFiles, setWorkspaceRoot, clearWorkspaceRoot } from './api/workspace';
 import { rollbackCheckpoint } from './api/checkpoint';
+import { saveCredential, getCredentialStatus, deleteCredential } from './api/credentials';
 import { HITLModal } from './components/HITLModal';
 import { DiffPanel } from './components/DiffPanel';
 import { FolderPicker } from './components/FolderPicker';
@@ -39,6 +40,8 @@ import {
   FolderPlus,
   FolderX,
   FileDiff,
+  Eye,
+  EyeOff,
   type LucideIcon,
 } from 'lucide-react';
 import type { AgentRole, ChatItem, FileTreeNode, RoleStatus, SessionRecord } from './types';
@@ -250,6 +253,11 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [composerFocused, setComposerFocused] = useState(false);
+  const [credentialStatus, setCredentialStatus] = useState<boolean | null>(null);
+  const [apiKey, setApiKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [credentialMessage, setCredentialMessage] = useState<string | null>(null);
+  const [credentialLoading, setCredentialLoading] = useState(false);
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsHost = import.meta.env.DEV ? 'localhost:3000' : window.location.host;
@@ -331,6 +339,13 @@ export default function App() {
       })
       .catch((err) => setFileTreeError(err instanceof Error ? err.message : String(err)));
   }, [page, checkpoint, workspacePath, projectOpen]);
+
+  useEffect(() => {
+    if (page !== 'settings') return;
+    void getCredentialStatus()
+      .then(setCredentialStatus)
+      .catch(() => setCredentialStatus(null));
+  }, [page]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -1430,6 +1445,120 @@ export default function App() {
                   <div className="settings-row">
                     <span>{sessions.length} 条记录</span>
                     <button type="button" className="header-btn" onClick={() => void refresh()}>刷新</button>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">API 密钥</div>
+                  <div className="settings-row">
+                    <span>
+                      <span className={`status-dot ${credentialStatus ? 'active' : 'idle'}`} />
+                      {credentialStatus ? '已配置' : '未配置'}
+                    </span>
+                    <span className="badge" style={{ fontSize: '11px' }}>{credentialStatus ? '可用' : '待设置'}</span>
+                  </div>
+                  <div className="settings-row" style={{ marginTop: '8px' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <input
+                        type={showKey ? 'text' : 'password'}
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="输入 API 密钥…"
+                        autoComplete="off"
+                        style={{
+                          width: '100%',
+                          padding: '6px 32px 6px 8px',
+                          border: '1px solid var(--border)',
+                          borderRadius: '6px',
+                          background: 'var(--bg-secondary)',
+                          color: 'var(--text)',
+                          fontSize: '13px',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowKey((v) => !v)}
+                        style={{
+                          position: 'absolute',
+                          right: '4px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: 'var(--text-secondary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '4px',
+                        }}
+                        aria-label={showKey ? '隐藏密钥' : '显示密钥'}
+                      >
+                        {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="settings-row" style={{ marginTop: '8px', gap: '8px' }}>
+                    <button
+                      type="button"
+                      className="header-btn"
+                      disabled={credentialLoading || !apiKey.trim()}
+                      onClick={async () => {
+                        setCredentialLoading(true);
+                        setCredentialMessage(null);
+                        try {
+                          await saveCredential('llm', 'openai', apiKey.trim());
+                          setCredentialMessage('密钥已保存');
+                          setApiKey('');
+                          const status = await getCredentialStatus();
+                          setCredentialStatus(status);
+                        } catch (err) {
+                          setCredentialMessage(err instanceof Error ? err.message : '保存失败');
+                        } finally {
+                          setCredentialLoading(false);
+                          setTimeout(() => setCredentialMessage(null), 3000);
+                        }
+                      }}
+                    >
+                      {credentialLoading ? '保存中…' : '保存'}
+                    </button>
+                    <button
+                      type="button"
+                      className="header-btn"
+                      disabled={credentialLoading || !credentialStatus}
+                      onClick={async () => {
+                        setCredentialLoading(true);
+                        setCredentialMessage(null);
+                        try {
+                          await deleteCredential('llm', 'openai');
+                          setCredentialMessage('密钥已清除');
+                          setApiKey('');
+                          setCredentialStatus(false);
+                        } catch (err) {
+                          setCredentialMessage(err instanceof Error ? err.message : '清除失败');
+                        } finally {
+                          setCredentialLoading(false);
+                          setTimeout(() => setCredentialMessage(null), 3000);
+                        }
+                      }}
+                    >
+                      {credentialLoading ? '清除中…' : '清除'}
+                    </button>
+                  </div>
+                  {credentialMessage && (
+                    <div
+                      style={{
+                        marginTop: '8px',
+                        fontSize: '12px',
+                        color: credentialMessage.includes('失败') ? 'var(--danger)' : 'var(--success)',
+                      }}
+                    >
+                      {credentialMessage}
+                    </div>
+                  )}
+                  <div className="settings-row" style={{ marginTop: '8px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      存储方式: {navigator.platform?.includes('Win') ? 'Windows Credential Manager' : 'AES 加密文件'}
+                    </span>
                   </div>
                 </div>
               </div>
