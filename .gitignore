@@ -7,3 +7,4 @@ dist/
 .env
 /credentials/
 .DS_Store
+.worktrees/
