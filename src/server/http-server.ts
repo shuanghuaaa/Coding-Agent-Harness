@@ -6,6 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { AgentLoop } from '../agent/loop';
 import type { HITLRequest, HITLResponse, ProgressCallback, RoundProgress, RunResult } from '../agent/loop';
 import type { SessionStore, SessionData } from './session-store';
+import type { CredentialStore } from '../credentials/store';
 import type { WSMessage } from './types';
 import { WorkspaceCheckpoint, type Checkpoint, type CheckpointDiff } from '../workspace/checkpoint';
 import { buildFileTree } from '../workspace/file-tree';
@@ -37,6 +38,7 @@ export class HarnessServer {
   private wss: WebSocketServer;
   private loop: AgentLoop;
   private sessionStore?: SessionStore;
+  private credentialStore?: CredentialStore;
   private checkpoint: WorkspaceCheckpoint;
   private workspaceRoot: string;
   private initialWorkspaceRoot: string;
@@ -51,9 +53,11 @@ export class HarnessServer {
     port: number = 3000,
     sessionStore?: SessionStore,
     workspaceRoot: string = process.cwd(),
+    credentialStore?: CredentialStore,
   ) {
     this.loop = loop;
     this.sessionStore = sessionStore;
+    this.credentialStore = credentialStore;
     this.workspaceRoot = workspaceRoot;
     this.initialWorkspaceRoot = workspaceRoot;
     this.checkpoint = new WorkspaceCheckpoint(workspaceRoot);
@@ -119,6 +123,57 @@ export class HarnessServer {
         res.json({ ok: true });
       });
     }
+
+    this.app.post('/api/credentials', requireToken, async (req, res) => {
+      if (!this.credentialStore) {
+        res.status(501).json({ error: 'credential store not available' });
+        return;
+      }
+      try {
+        const { service, account, password } = req.body;
+        if (!service || !account || !password) {
+          res.status(400).json({ error: 'missing service, account, or password' });
+          return;
+        }
+        await this.credentialStore.set(service, account, password);
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    this.app.get('/api/credentials/status', requireToken, async (req, res) => {
+      if (!this.credentialStore) {
+        res.json({ configured: false });
+        return;
+      }
+      try {
+        const service = typeof req.query.service === 'string' ? req.query.service : 'llm';
+        const account = typeof req.query.account === 'string' ? req.query.account : 'openai';
+        const key = await this.credentialStore.get(service, account);
+        res.json({ configured: key !== null && key.length > 0 });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    this.app.delete('/api/credentials', requireToken, async (req, res) => {
+      if (!this.credentialStore) {
+        res.status(501).json({ error: 'credential store not available' });
+        return;
+      }
+      try {
+        const { service, account } = req.body;
+        if (!service || !account) {
+          res.status(400).json({ error: 'missing service or account' });
+          return;
+        }
+        await this.credentialStore.delete(service, account);
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
 
     this.app.get('/api/workspace/files', requireToken, (_req, res) => {
       try {
