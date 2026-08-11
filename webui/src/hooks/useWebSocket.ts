@@ -22,6 +22,7 @@ export function useWebSocket(url: string) {
   const idRef = useRef(0);
   const retryRef = useRef(0);
   const timerRef = useRef<number | null>(null);
+  const pendingRef = useRef<string[]>([]);
 
   useEffect(() => {
     let unmounted = false;
@@ -37,6 +38,13 @@ export function useWebSocket(url: string) {
         retryRef.current = 0;
         setConnected(true);
         setReconnecting(false);
+        if (pendingRef.current.length > 0) {
+          const messages = [...pendingRef.current];
+          pendingRef.current = [];
+          for (const msg of messages) {
+            ws.send(msg);
+          }
+        }
       };
       ws.onclose = () => {
         setConnected(false);
@@ -100,7 +108,12 @@ export function useWebSocket(url: string) {
   const sendTask = useCallback((task: string, opts?: { sessionId?: number }) => {
     const payload: { task: string; sessionId?: number } = { task };
     if (opts?.sessionId != null) payload.sessionId = opts.sessionId;
-    wsRef.current?.send(JSON.stringify({ type: 'task', payload }));
+    const msg = JSON.stringify({ type: 'task', payload });
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(msg);
+    } else {
+      pendingRef.current.push(msg);
+    }
     setStatus('running');
     setResult(null);
     setHitlRequest(null);
@@ -119,7 +132,12 @@ export function useWebSocket(url: string) {
       const payload: { task: string; maxRetries?: number; sessionId?: number } = { task };
       if (opts?.maxRetries != null) payload.maxRetries = opts.maxRetries;
       if (opts?.sessionId != null) payload.sessionId = opts.sessionId;
-      wsRef.current?.send(JSON.stringify({ type: 'orchestrate', payload }));
+      const msg = JSON.stringify({ type: 'orchestrate', payload });
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(msg);
+      } else {
+        pendingRef.current.push(msg);
+      }
       setStatus('running');
       setResult(null);
       setHitlRequest(null);
