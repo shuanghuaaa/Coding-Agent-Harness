@@ -21,7 +21,7 @@ function makeHITLLoop(
     contextBuilder: new ContextBuilder({
       systemPrompt: 'You are a coding agent.',
       configRules: [],
-      memories: [],
+      memoryEntries: [],
     }),
     stopCondition: new StopCondition({ maxRounds: 10 }),
     validator: new FeedbackValidator(),

@@ -16,7 +16,7 @@ function makeBasicLoop(mockLLM: MockLLM, tools: Tool[] = []) {
     contextBuilder: new ContextBuilder({
       systemPrompt: 'You are a helpful agent.',
       configRules: [],
-      memories: [],
+      memoryEntries: [],
     }),
     stopCondition: new StopCondition({ maxRounds: 10 }),
     validator: new FeedbackValidator(),

@@ -1,5 +1,5 @@
 import { FailureClassifier } from './classifier';
-import type { Feedback } from './types';
+import type { Feedback, TestFailure } from './types';
 import type { TestOutputParser } from './parsers/types';
 import { VitestParser } from './parsers/vitest-parser';
 import { JestParser } from './parsers/jest-parser';
@@ -30,11 +30,9 @@ export class FeedbackValidator {
     }
 
     if (testOutput.includes('FAIL') || testOutput.includes('fail')) {
-      // Try parsers in order; first parser that canParse() wins
       let failures = this.parseWithChain(testOutput);
 
       if (failures.length === 0) {
-        // Fallback: simple line-based parsing
         const failureLines = testOutput
           .split('\n')
           .filter((line) => line.includes('FAIL'));
@@ -59,10 +57,11 @@ export class FeedbackValidator {
     };
   }
 
-  private parseWithChain(output: string) {
+  private parseWithChain(output: string): TestFailure[] {
     for (const parser of this.parsers) {
       if (parser.canParse(output)) {
-        return parser.parse(output);
+        const result = parser.parse(output);
+        if (result.length > 0) return result;
       }
     }
     return [];

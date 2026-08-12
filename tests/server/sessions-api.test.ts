@@ -22,7 +22,7 @@ function makeLoop(responses: LLMResponse[], tools: Tool[] = []): AgentLoop {
     contextBuilder: new ContextBuilder({
       systemPrompt: 'You are a coding agent.',
       configRules: [],
-      memories: [],
+      memoryEntries: [],
     }),
     stopCondition: new StopCondition({ maxRounds: 5 }),
     validator: new FeedbackValidator(),

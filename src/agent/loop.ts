@@ -80,7 +80,7 @@ export class AgentLoop {
     this.messages = this.config.contextBuilder.build([
       ...prior,
       { role: 'user', content: task },
-    ]);
+    ], task);
 
     const tools: ToolDefinition[] = this.config.dispatcher.getDefinitions();
 

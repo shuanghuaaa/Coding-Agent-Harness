@@ -163,8 +163,7 @@ export class HarnessServer {
         return;
       }
       try {
-        const service = typeof req.query.service === 'string' ? req.query.service : '';
-        const account = typeof req.query.account === 'string' ? req.query.account : '';
+        const { service, account } = req.body;
         if (!service || !account) {
           res.status(400).json({ error: 'missing service or account' });
           return;
@@ -441,7 +440,7 @@ export class HarnessServer {
       contextBuilder: new ContextBuilder({
         systemPrompt: ROLE_DEFINITIONS[role].systemPrompt,
         configRules: [],
-        memories: [],
+        memoryEntries: [],
       }),
       dispatcher: new ToolDispatcher(filterToolsForRole(role, allTools)),
       hitlCallback,

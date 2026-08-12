@@ -1473,6 +1473,7 @@ export default function App() {
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
                         placeholder="输入 API 密钥…"
+                        autoComplete="off"
                         style={{
                           width: '100%',
                           padding: '6px 32px 6px 8px',

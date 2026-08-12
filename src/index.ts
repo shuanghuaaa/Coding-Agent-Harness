@@ -17,6 +17,7 @@ import type { LLMProvider } from './llm/provider';
 import type { CredentialStore } from './credentials/store';
 import { HarnessServer } from './server/http-server';
 import { logger } from './utils/logger';
+import { KeywordRetriever } from './memory/retriever';
 
 async function createCredentialStore(): Promise<CredentialStore> {
   if (process.platform === 'win32') {
@@ -49,7 +50,7 @@ async function createLLMProvider(credentialStore?: CredentialStore): Promise<LLM
   }
 
   logger.warn('No LLM provider configured. Using MockLLM with empty responses.');
-  logger.warn('Set LLM_PROVIDER to "openai" and LLM_API_KEY to use a real LLM.');
+  logger.warn('Set LLM_PROVIDER to \"openai\" and LLM_API_KEY to use a real LLM.');
   return new MockLLM([]);
 }
 
@@ -65,8 +66,9 @@ async function main(): Promise<void> {
   logger.info('Config loaded', { ruleCount: rules.length });
 
   const memoryStore = new MemoryStore('data/memory.db');
-  const memories = memoryStore.list().map((m) => `${m.key}: ${m.value}`);
-  logger.info('Memory store initialized', { entryCount: memories.length });
+  const memoryEntries = memoryStore.list();
+  const retriever = new KeywordRetriever();
+  logger.info('Memory store initialized', { entryCount: memoryEntries.length });
 
   const sessionStore = new SessionStore('data/sessions.db');
   logger.info('Session store initialized', { path: 'data/sessions.db' });
@@ -77,7 +79,9 @@ async function main(): Promise<void> {
   const contextBuilder = new ContextBuilder({
     systemPrompt: 'You are a coding agent. You can read, write, delete files, run shell commands, search code, check git diff, and run tests.',
     configRules: rules,
-    memories,
+    memoryEntries,
+    retriever,
+    maxMemories: 5,
   });
 
   const stopCondition = new StopCondition({ maxRounds: 10 });
