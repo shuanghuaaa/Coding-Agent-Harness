@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GenericParser } from '../../src/feedback/parsers/generic-parser';
+import { GenericParser } from '../../../src/feedback/parsers/generic-parser';
 
 describe('GenericParser', () => {
   const parser = new GenericParser();
