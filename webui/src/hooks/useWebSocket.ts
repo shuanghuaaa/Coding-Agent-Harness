@@ -27,12 +27,9 @@ export function useWebSocket(url: string) {
 
   useEffect(() => {
     let unmounted = false;
-    const token = new URLSearchParams(window.location.search).get('token') || '';
-    const wsUrl = token ? `${url}?token=${encodeURIComponent(token)}` : url;
-
     const connect = () => {
       if (unmounted) return;
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {

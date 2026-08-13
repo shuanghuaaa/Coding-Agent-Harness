@@ -42,7 +42,6 @@ export class HarnessServer {
   private checkpoint: WorkspaceCheckpoint;
   private workspaceRoot: string;
   private initialWorkspaceRoot: string;
-  private token: string;
   private pendingHITL: Map<string, PendingHITL> = new Map();
   private runningLoops: Map<WebSocket, Cancellable> = new Map();
   private checkpoints: Map<string, Checkpoint> = new Map();
@@ -61,22 +60,10 @@ export class HarnessServer {
     this.workspaceRoot = workspaceRoot;
     this.initialWorkspaceRoot = workspaceRoot;
     this.checkpoint = new WorkspaceCheckpoint(workspaceRoot);
-    this.token = process.env.HARNESS_TOKEN || '';
 
     this.app = express();
     this.server = http.createServer(this.app);
-    this.wss = new WebSocketServer({
-      server: this.server,
-      verifyClient: (info, cb) => {
-        const clientToken = new URL(info.req.url ?? '', `http://${info.req.headers.host}`).searchParams.get('token');
-        if (!this.token || clientToken === this.token) {
-          cb(true);
-        } else {
-          logger.warn('WebSocket connection rejected: invalid token');
-          cb(false, 401, 'Unauthorized');
-        }
-      },
-    });
+    this.wss = new WebSocketServer({ server: this.server });
 
     this.app.use(express.json());
 
@@ -84,27 +71,12 @@ export class HarnessServer {
       res.json({ status: 'ok' });
     });
 
-    const requireToken: express.RequestHandler = (req, res, next) => {
-      if (!this.token) {
-        next();
-        return;
-      }
-      const auth = req.headers.authorization;
-      const bearer = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
-      const queryToken = typeof req.query.token === 'string' ? req.query.token : undefined;
-      if (bearer === this.token || queryToken === this.token) {
-        next();
-        return;
-      }
-      res.status(401).json({ error: 'unauthorized' });
-    };
-
     if (this.sessionStore) {
       const store = this.sessionStore;
-      this.app.get('/api/sessions', requireToken, (_req, res) => {
+      this.app.get('/api/sessions', (_req, res) => {
         res.json(store.list());
       });
-      this.app.get('/api/sessions/:id', requireToken, (req, res) => {
+      this.app.get('/api/sessions/:id', (req, res) => {
         const id = Number(req.params.id);
         const record = Number.isInteger(id) ? store.get(id) : undefined;
         if (!record) {
@@ -113,7 +85,7 @@ export class HarnessServer {
         }
         res.json(record);
       });
-      this.app.delete('/api/sessions/:id', requireToken, (req, res) => {
+      this.app.delete('/api/sessions/:id', (req, res) => {
         const id = Number(req.params.id);
         const ok = Number.isInteger(id) ? store.delete(id) : false;
         if (!ok) {
@@ -124,7 +96,7 @@ export class HarnessServer {
       });
     }
 
-    this.app.post('/api/credentials', requireToken, async (req, res) => {
+    this.app.post('/api/credentials', async (req, res) => {
       if (!this.credentialStore) {
         res.status(501).json({ error: 'credential store not available' });
         return;
@@ -142,7 +114,7 @@ export class HarnessServer {
       }
     });
 
-    this.app.get('/api/credentials/status', requireToken, async (req, res) => {
+    this.app.get('/api/credentials/status', async (req, res) => {
       if (!this.credentialStore) {
         res.json({ configured: false });
         return;
@@ -157,7 +129,7 @@ export class HarnessServer {
       }
     });
 
-    this.app.delete('/api/credentials', requireToken, async (req, res) => {
+    this.app.delete('/api/credentials', async (req, res) => {
       if (!this.credentialStore) {
         res.status(501).json({ error: 'credential store not available' });
         return;
@@ -175,7 +147,7 @@ export class HarnessServer {
       }
     });
 
-    this.app.get('/api/workspace/files', requireToken, (_req, res) => {
+    this.app.get('/api/workspace/files', (_req, res) => {
       try {
         res.json(buildFileTree(this.workspaceRoot));
       } catch (err) {
@@ -183,7 +155,7 @@ export class HarnessServer {
       }
     });
 
-    this.app.get('/api/workspace/file', requireToken, (req, res) => {
+    this.app.get('/api/workspace/file', (req, res) => {
       const p = typeof req.query.path === 'string' ? req.query.path : '';
       if (!p) {
         res.status(400).json({ error: 'missing path' });
@@ -201,11 +173,11 @@ export class HarnessServer {
       }
     });
 
-    this.app.get('/api/workspace/root', requireToken, (_req, res) => {
+    this.app.get('/api/workspace/root', (_req, res) => {
       res.json({ path: this.workspaceRoot });
     });
 
-    this.app.post('/api/workspace/root', requireToken, (req, res) => {
+    this.app.post('/api/workspace/root', (req, res) => {
       if (req.body?.clear === true) {
         this.setWorkspace(this.initialWorkspaceRoot);
         res.json({ path: this.workspaceRoot, cleared: true });
@@ -227,7 +199,7 @@ export class HarnessServer {
       }
     });
 
-    this.app.get('/api/workspace/browse', requireToken, (req, res) => {
+    this.app.get('/api/workspace/browse', (req, res) => {
       const p = typeof req.query.path === 'string' ? req.query.path : '';
       try {
         res.json(browseDirectory(p));
@@ -238,7 +210,7 @@ export class HarnessServer {
       }
     });
 
-    this.app.post('/api/checkpoint/rollback', requireToken, (req, res) => {
+    this.app.post('/api/checkpoint/rollback', (req, res) => {
       const id = req.body?.id as string | undefined;
       if (!id) {
         res.status(400).json({ error: 'missing checkpoint id' });

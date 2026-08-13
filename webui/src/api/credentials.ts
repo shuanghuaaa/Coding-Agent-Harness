@@ -1,14 +1,9 @@
-function authHeaders(): HeadersInit {
-  const token = new URLSearchParams(window.location.search).get('token') || '';
-  const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return headers;
-}
+const jsonHeaders: HeadersInit = { 'Content-Type': 'application/json' };
 
 export async function saveCredential(service: string, account: string, password: string): Promise<void> {
   const res = await fetch('/api/credentials', {
     method: 'POST',
-    headers: authHeaders(),
+    headers: jsonHeaders,
     body: JSON.stringify({ service, account, password }),
   });
   if (!res.ok) {
@@ -18,7 +13,7 @@ export async function saveCredential(service: string, account: string, password:
 }
 
 export async function getCredentialStatus(): Promise<boolean> {
-  const res = await fetch('/api/credentials/status', { headers: authHeaders() });
+  const res = await fetch('/api/credentials/status');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = (await res.json()) as { configured: boolean };
   return body.configured;
@@ -27,7 +22,7 @@ export async function getCredentialStatus(): Promise<boolean> {
 export async function deleteCredential(service: string, account: string): Promise<void> {
   const res = await fetch('/api/credentials', {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: jsonHeaders,
     body: JSON.stringify({ service, account }),
   });
   if (!res.ok) {

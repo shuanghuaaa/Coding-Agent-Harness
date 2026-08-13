@@ -52,7 +52,7 @@ export function ChatTimeline({ items, end, connected, review }: ChatTimelineProp
           </ul>
           {!connected && (
             <p className="hint-warn">
-              未连接后端。若设置了 HARNESS_TOKEN，请用 ?token=… 打开页面。
+              未连接后端，请确认服务已启动。
             </p>
           )}
         </div>
