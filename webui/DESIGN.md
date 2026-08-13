@@ -1,85 +1,81 @@
-# DESIGN.md — Harness Mission Control
+# DESIGN.md — CaseAI Harness WebUI
 
-Brand contract for the Coding Agent Harness WebUI (v2, 2026-08).
+Brand contract for the Coding Agent Harness WebUI (CaseAI Match, 2026-08).
+
+取代早期「Harness Mission Control / Terminal」深色 HUD 合同。功能能力不变；视觉与信息架构见 `docs/superpowers/specs/2026-08-13-caseai-webui-redesign.md`。
 
 ## Identity
 
 | Field | Value |
 |-------|--------|
-| System name | **Harness Mission Control** |
-| Product | Coding Agent Harness |
-| Mood | Dark-tech HUD / space-station operator console |
-| Density | Tool-first, medium-high information density |
+| System name | **Coding Agent Harness** |
+| Visual system | CaseAI Match 浅色 SaaS 操作台 |
+| Mood | 专业、留白、可扫描 |
+| Density | 中等；轮次默认折叠，最终结果完整可见 |
 
 ## Color tokens
 
 | Token | Value | Usage |
 |-------|--------|--------|
-| `--bg` | `#070b12` | Page background (deep space blue-black) |
-| `--bg-panel` | `rgba(13, 20, 32, 0.72)` | Panels (with backdrop blur) |
-| `--bg-elevated` | `#0d1420` | Buttons, inputs |
-| `--bg-inset` | `#05080e` | Code blocks, tool results, stat bars |
-| `--border` | `rgba(120, 160, 200, 0.14)` | Hairline rules |
-| `--border-strong` | `rgba(120, 160, 200, 0.3)` | Corner ticks, hover states |
-| `--text` | `#dbe4ee` | Primary text |
-| `--text-dim` | `#7d8fa3` | Secondary / labels |
-| `--accent` | `#3dd68c` | Signal green: connected, success, primary |
-| `--info` | `#22d3ee` | Cyan: numbers, round numbers, done states |
-| `--warn` | `#e6a23c` | high severity, awaiting, tool names |
-| `--danger` | `#f07178` | critical, reject, fail |
+| `--canvas` | `#F7F7F8` | 页面画布 |
+| `--surface` | `#FFFFFF` | 主舞台 / 卡片 |
+| `--ink` / `--ink-strong` | `#18181B` / `#09090B` | 正文 / 强对比 |
+| `--muted` / `--subtle` | `#71717A` / `#A1A1AA` | 次要文案 |
+| `--fill` | `#F4F4F5` | 浅填充、inset |
+| `--primary` | `#18181B` | 主按钮（白字） |
+| `--display-accent` | `#3F3F46` | Home 问候等装饰字色 |
+| `--border` / `--border-strong` | `#E4E4E7` / `#D4D4D8` | 分隔线 |
+| `--success` / `--warn` / `--danger` | `#059669` / `#D97706` / `#DC2626` | 状态（反馈 pill、HITL） |
 
-Glow (`box-shadow` with accent color) is reserved for status LEDs and the
-active loop stage only — never for decoration.
+单色主色板：无青 / 紫 / 洋红作为品牌主色。深色主题可选，非必交付。
 
 ## Typography
 
-- **UI + log:** `IBM Plex Mono`, `JetBrains Mono`, `ui-monospace`, monospace
-- Body: 13px; panel labels: 10px uppercase with 0.12em tracking; dashboard
-  numbers: 14px semibold
-- No serif; no Inter / Roboto / system-ui as primary
+- **UI：** Inter 400 / 500 / 600（产品正文字体）
+- **装饰问候（Home）：** Caveat Brush，仅一句，颜色为深灰
+- **代码：** 等宽栈（用于终端块 / 代码块）
+- 避免把 Inter 换成系统默认栈以外的「AI 默认」展示字体组合
 
 ## Layout
 
-Three-zone app shell, full viewport height, page never scrolls (each zone
-scrolls internally):
+窄导航轨始终在最左：Home / Sessions / Projects / Settings（可收成仅图标）。
 
-1. **Top bar** — brand, round/tool metrics, connection + agent status LEDs, panel toggles
-2. **Left** — session history sidebar (240px, collapsible)
-3. **Center** — chat timeline + bottom composer
-4. **Right** — control deck (320px): loop indicator, round timeline, feedback trail, tool stats
+1. **Home** — Caveat 问候 + 主输入 + 角色选择  
+2. **Session** — 左会话列表、中对话流 + Composer、右 Context（Files / Metrics / Checkpoint）  
+3. **Projects** — 工作区绑定；三角色卡片点击进入会话（无独立编排表单）  
+4. **Settings** — API Key、模型、连接信息  
 
-Below 1100px the deck becomes a fixed overlay (toggled from the top bar).
-Radius ≤ 6px; 1px translucent borders; grid backdrop (`36px` cells); panels
-carry corner ticks via `.panel` pseudo-elements. No soft shadows, no card stacks.
+页面本身尽量不滚动；主舞台为浮起白卡片，四周露出画布。
 
 ## Components
 
-- **Panel:** `.panel` + corner ticks; `.panel-label` for section titles
-- **LED:** square, glowing when `.on` (green pulse) / `.warn` (amber pulse) / `.off` (red)
-- **Round card:** `ROUND NN` header, collapsible tool blocks with per-tool lucide icons
-- **Loop indicator:** 上下文 → LLM → 工具 → 反馈 nodes; active glows green,
-  awaiting HITL pulses amber, done turns cyan, feedback node carries fail/pass color
-- **Feedback trail:** `R1 FAIL → R2 PASS` node chain
-- **HITL modal:** severity band on top (amber / pulsing red), editable JSON
-  args, `A` approve / `R` reject shortcuts
+- **轮次卡：** 默认折叠摘要；展开看思考与工具轨迹；最终结果完整可见  
+- **FeedbackTrail：** fail → 分类 pill → 再修正的时间线；可打开测试文件片段  
+- **角色选择：** Composer 旁下拉，多选 Coder / Reviewer / Tester（≥1）；改选对下一次发送生效  
+- **HITL modal：** 白圆角面板；允许（黑按钮）/ 拒绝（描边）/ 改参后允许  
+- **Markdown / 工具结果：** 真实渲染；工具输出用 `ToolResultView`
 
 ## Motion
 
 | Interaction | Motion |
 |-------------|--------|
-| Button press | `transform: scale(0.97)` ~120ms `--ease-out` |
-| Card / modal appear | opacity + translateY(8px), ~200ms `--ease-out` |
-| Connected LED | opacity pulse ~1.6s linear (ambient only) |
-| Loop stage change | border/color/box-shadow 300ms transition |
-| Tool stat bars | width 300ms transition |
+| Button press | `transform: scale(0.97)` ~120ms ease-out |
+| Modal / panel appear | opacity + 轻微 translateY，&lt;300ms |
+| 状态色切换 | border/color ~200–300ms |
 
-`--ease-out: cubic-bezier(0.23, 1, 0.32, 1)`
+纯 CSS，不引入动画库。
 
 ## Toolchain
 
 | Layer | Choice |
 |-------|--------|
-| Icons | lucide-react (only UI dependency) |
-| Animation | Pure CSS (no animation library) |
-| Data | WebSocket (unchanged protocol) + `/api/sessions` REST |
+| Icons | lucide-react（`strokeWidth≈1.75`） |
+| Animation | Pure CSS |
+| Data | WebSocket + `/api/sessions` / credentials / workspace / checkpoint |
 | Implementation | React 18 + Vite in `webui/` |
+
+## Related specs
+
+- CaseAI 重设计：`docs/superpowers/specs/2026-08-13-caseai-webui-redesign.md`
+- 反馈 UI：`docs/superpowers/specs/2026-08-14-feedback-loop-deepening-design.md`
+- 角色多选：`docs/superpowers/specs/2026-08-14-session-role-multiselect-design.md`

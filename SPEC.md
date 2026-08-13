@@ -68,11 +68,14 @@
 | 项目 | 描述 |
 |------|------|
 | 触发条件 | 每次工具执行后，若工具名在 `feedbackToolNames` 列表中（默认 `['run_test']`） |
-| 校验器（FeedbackValidator） | 解析测试输出（stdout + error），客观判定通过/失败；提取失败详情（测试名、期望值、实际值、文件、行号） |
+| 校验器（FeedbackValidator） | 解析测试输出（stdout + error），客观判定通过/失败；提取失败详情（测试名、期望值、实际值、文件、行号）；可插拔解析器：vitest / jest / mocha / generic |
 | 失败分类（FailureClassifier） | 四类：`compile`（TS 编译错误）、`assertion`（断言失败，含 expected/got）、`timeout`（超时）、`runtime`（其他运行时错误） |
-| 回灌策略（FeedbackInjector） | 失败时构造结构化反馈消息（含失败详情、分类、文件位置），作为 system 消息注入 messages[]，驱动下一轮 LLM 修正 |
-| 深度实现 | ① 多轮修正追踪（`feedbackHistory` 记录每轮状态）；② 失败模式识别（同一测试重复失败时可检测）；③ 确定性测试（mock LLM 下注入失败 → 断言 agent 下一轮改变行为） |
-| §A.4 合规 | 反馈闭环是**纯代码机制**——校验器、分类器、注入器都是确定性函数，不接受 LLM 参与；mock LLM 下可完全验证（`tests/feedback/classifier.test.ts`、`tests/feedback/validator.test.ts`、`tests/feedback/injector.test.ts`） |
+| 回灌策略（FeedbackInjector） | 失败时构造结构化反馈消息（summary、分类标签、`file:line`、可选重复失败 WARNING），作为 system 消息注入 messages[]，驱动下一轮 LLM 修正 |
+| 重复失败检测 | `detectRepeatedFailure()`（`src/feedback/repeated-failure.ts`）：同一 `testName`（或 `file:line`）连续失败 ≥2 次写入 `repeatedFailure` |
+| 结构化 history | `feedbackHistory` 条目含 `status`、`round`、`summary`、`failureTypes`、`failures[]`、可选 `repeatedFailure` |
+| WebUI 呈现 | 会话内 `FeedbackTrail` 讲故事；解析到有效 `file:line` 时可拉取测试文件片段（`TestFileSnippet`） |
+| 深度实现 | ① 多轮修正追踪；② 失败分类 + 人话摘要；③ 重复失败警告；④ 多框架解析器；⑤ mock 下确定性演示（含重复失败 → 修正 → pass） |
+| §A.4 合规 | 反馈闭环是**纯代码机制**——校验器、分类器、注入器、摘要与重复失败检测都是确定性函数，不接受 LLM 参与；见 `tests/feedback/` 与 `tests/integration/harness-demo.test.ts` |
 
 ### 3.4 治理护栏（危险动作拦截 + HITL）
 
@@ -90,9 +93,9 @@
 |------|------|
 | 存储 | SQLite 数据库（`better-sqlite3`），单表 `memories` |
 | 存储内容 | `key`（唯一标识）、`value`（内容）、`category`（`convention` / `decision` / `preference`） |
-| 检索方式 | 每次构建上下文时，`MemoryStore.list()` 获取全部记忆条目，按 `updated_at` 降序排列，注入到 system prompt 中（标注为"Project Memory"） |
+| 检索方式 | `KeywordRetriever` 按当前任务关键词对记忆打分，取 Top-N 注入 system prompt（标注为"Project Memory"）；非全量硬塞 |
 | CRUD | `set(key, value, category)`（upsert）、`get(key)`、`list()`、`delete(key)` |
-| §A.4 合规 | MemoryStore 是纯数据层，CRUD 操作不依赖 LLM；mock LLM 下可确定性测试（`tests/memory/store.test.ts`） |
+| §A.4 合规 | MemoryStore / KeywordRetriever 是纯数据与确定性检索，不依赖 LLM；见 `tests/memory/store.test.ts`、`tests/memory/retriever.test.ts` |
 
 ### 3.6 配置层
 
@@ -166,36 +169,37 @@
 ### 5.1 组件图
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  WebUI (React 18 + Vite)          │
-│  聊天面板 (ChatPanel) · Agent 日志 (AgentLog)     │
-│  HITL 审批弹窗 (HITLModal)                       │
-└──────────────────────┬──────────────────────────┘
-                       │ WebSocket (ws)
-┌──────────────────────┴──────────────────────────┐
-│              Harness 内核 (TypeScript)            │
-│                                                   │
-│  ConfigLoader ──→ MemoryStore ──→ ContextBuilder │
-│  (.rules)         (SQLite)         (组装 messages)│
-│                                       │           │
-│                                       ▼           │
-│  ┌──────────────────────────────────────────┐    │
-│  │           Agent Loop (主循环)              │    │
-│  │                                          │    │
-│  │  LLMProvider.chat()                      │    │
-│  │    → 解析 tool_calls                     │    │
-│  │    → guardrail() 护栏拦截                 │    │
-│  │    → hitlCallback (HITL 审批)            │    │
-│  │    → ToolDispatcher.dispatch()           │    │
-│  │    → FeedbackValidator.validate()  ★     │    │
-│  │    → FeedbackInjector.inject()     ★     │    │
-│  │    → StopCondition.shouldStop()          │    │
-│  └──────────────────────────────────────────┘    │
-│                                                   │
-│  LLMProvider ── ToolDispatcher ── CredentialStore │
-│  (mock/openai)  (7 tools)         (WinCM/AES)   │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│           WebUI (React 18 + Vite · CaseAI 浅色操作台)      │
+│  Home / Session / Projects / Settings                     │
+│  轮次卡 · FeedbackTrail · 角色多选 · HITLModal            │
+└──────────────────────────┬───────────────────────────────┘
+                           │ WebSocket (ws) + REST
+┌──────────────────────────┴───────────────────────────────┐
+│                   Harness 内核 (TypeScript)                 │
+│                                                            │
+│  ConfigLoader → MemoryStore+KeywordRetriever → ContextBuilder│
+│  (.rules)       (SQLite)                       (组装 messages)│
+│                                       │                    │
+│                                       ▼                    │
+│  ┌────────────────────────────────────────────────────┐   │
+│  │  Agent Loop / Orchestrator（单角色或多角色流水线）     │   │
+│  │  coder → reviewer → tester（按勾选子集）              │   │
+│  │  LLM → guardrail → HITL → tools → Feedback★ → stop  │   │
+│  └────────────────────────────────────────────────────┘   │
+│                                                            │
+│  LLMProvider · ToolDispatcher · CredentialStore · SessionStore│
+└────────────────────────────────────────────────────────────┘
 ```
+
+### 5.1.1 多角色编排（补充）
+
+| 项目 | 描述 |
+|------|------|
+| 角色 | `coder`（读写工具）、`reviewer`（只读审查）、`tester`（读 + 跑测） |
+| 会话协议 | 单角色：`task` + 可选 `agentRole`；多角色：`orchestrate` + `roles: AgentRole[]` |
+| UI | 会话 Composer 旁角色下拉（≥1）；项目页角色卡片进入会话并预勾选 |
+| 实现 | `src/orchestration/`；测试 `tests/orchestration/` |
 
 ### 5.2 数据流（以"写一个 add 函数"为例）
 
@@ -285,11 +289,28 @@ interface TestFailure {
   raw: string;
 }
 
+interface RepeatedFailure {
+  testName: string;
+  streak: number;
+  message: string;
+}
+
 interface Feedback {
   status: 'pass' | 'fail';
   failures: TestFailure[];
   round: number;
   summary: string;
+  failureTypes?: FailureType[];
+  repeatedFailure?: RepeatedFailure;
+}
+
+interface FeedbackHistoryEntry {
+  round: number;
+  status: 'pass' | 'fail';
+  summary?: string;
+  failureTypes?: FailureType[];
+  failures?: Array<Pick<TestFailure, 'testName' | 'type' | 'file' | 'line' | 'expected' | 'received'>>;
+  repeatedFailure?: RepeatedFailure;
 }
 ```
 
@@ -454,10 +475,12 @@ class FeedbackInjector {
 
 **深度实现细节：**
 
-1. **多轮修正追踪**：`feedbackHistory: Array<{ round: number; status: string }>` 记录每轮测试结果
-2. **失败分类**：四类（compile / assertion / timeout / runtime），帮助 LLM 理解失败性质
-3. **结构化回灌**：失败消息包含测试名、期望值、实际值、文件位置、行号——足够 LLM 定位并修正
-4. **确定性验证**：`tests/integration/harness-demo.test.ts` 中 mock LLM 注入失败 → 断言 agent 收到反馈并改变行为
+1. **多轮修正追踪**：`feedbackHistory` 为结构化条目（summary / failureTypes / failures / repeatedFailure），不仅是 `{ round, status }`
+2. **失败分类**：四类（compile / assertion / timeout / runtime），帮助 LLM 与 UI 理解失败性质
+3. **结构化回灌**：Injector 含 `[FAIL]` summary、每条失败的 type / expected / got / `file:line`；重复失败追加 `WARNING: … failed N times in a row`
+4. **可插拔解析器**：vitest / jest / mocha / generic（`src/feedback/parsers/`）
+5. **确定性验证**：`tests/integration/harness-demo.test.ts` 覆盖 fail → 修正 → pass，以及重复失败 WARNING
+6. **UI 可讲故事**：`FeedbackTrail` + 可选 `TestFileSnippet`（规格：`docs/superpowers/specs/2026-08-14-feedback-loop-deepening-design.md`）
 
 ### 8.3 其他维度（最低实现，满足 §A.4-D"基础要完整"）
 
@@ -502,16 +525,18 @@ class FeedbackInjector {
 |------|-------------|---------|---------|
 | 工具分发 | ✅ | `tests/tools/dispatcher.test.ts` | 按名称路由到正确工具；未知工具抛异常 |
 | 治理拦截 | ✅ | `tests/guard/guardrail.test.ts` | 传入 `rm -rf /` → 断言 blocked: true；传入 `npm test` → 断言 blocked: false |
-| 反馈回灌 | ✅ | `tests/feedback/validator.test.ts`、`classifier.test.ts`、`injector.test.ts` | 传入测试输出字符串 → 断言解析结果、分类正确、消息格式正确 |
-| 记忆读写 | ✅ | `tests/memory/store.test.ts` | set → get → 断言值一致；delete → get → 断言 undefined |
+| 反馈回灌 | ✅ | `tests/feedback/validator.test.ts`、`classifier.test.ts`、`injector.test.ts`、`summary.test.ts`、`repeated-failure.test.ts`、`parsers/*` | 解析、分类、注入文案、摘要、重复失败、多框架解析器 |
+| 记忆读写 | ✅ | `tests/memory/store.test.ts`、`retriever.test.ts` | CRUD + 关键词检索排序 |
 | 停机判断 | ✅ | `tests/agent/stop-condition.test.ts` | 传入轮数和 finish_reason → 断言 shouldStop 正确 |
 | 主循环 | ✅ | `tests/agent/loop.test.ts` | Mock LLM 预设响应 → 断言循环完成、轮数正确 |
-| 反馈闭环（完整） | ✅ | `tests/integration/harness-demo.test.ts` | 注入失败 → 断言 agent 收到反馈、改变行为、最终通过 |
+| 多角色编排 | ✅ | `tests/orchestration/*.test.ts` | 角色定义、产物解析、子集流水线 |
+| 反馈闭环（完整） | ✅ | `tests/integration/harness-demo.test.ts` | 注入失败 → 断言 agent 收到反馈、改变行为、最终通过（含重复失败 WARNING） |
 
 ### 9.4 (D) 基础要完整，重点要深入
 
-- **六个维度全部有可运行的最低实现**：决策（主循环）、工具（7 个工具 + 分发器）、记忆（SQLite CRUD）、治理（7 种危险模式 + HITL）、反馈（校验器 + 分类器 + 注入器）、配置（.rules 加载器）
-- **重点维度：反馈闭环** — 深入实现了多轮修正追踪、四类失败分类、结构化回灌、确定性验证（详见 §8.2）
+- **六个维度全部有可运行的最低实现**：决策（主循环）、工具（7 个工具 + 分发器）、记忆（SQLite + 关键词检索）、治理（危险模式 + 可配置规则 + HITL）、反馈（校验器 + 分类器 + 注入器 + 摘要 + 重复失败 + 多解析器）、配置（.rules 加载器）
+- **重点维度：反馈闭环** — 深入实现了多轮结构化追踪、四类失败分类、重复失败警告、可插拔解析器、会话 UI 讲故事与确定性验证（详见 §8.2）
+- **编排扩展**：Coder / Reviewer / Tester 多角色子集流水线（非六个维度替代，而是决策层上的协作封装）
 
 ---
 
@@ -525,27 +550,25 @@ class FeedbackInjector {
 | 记忆存储 | SQLite（better-sqlite3） | 零配置、嵌入式、无需额外进程；满足最低实现要求 |
 | 凭据存储 | keytar（Windows CM，optional）+ AES-256-GCM | Windows CM 优先；AES-256-GCM 跨平台 fallback；Linux 容器省略 keytar |
 | WebSocket | ws | 轻量（无额外依赖）；前后端实时通信 |
-| 前端 | React 18 + Vite | 生态成熟；HMR 开发体验好；承接 Open Design 产物 |
-| 前端设计 | Open Design + Harness Terminal | 见 §10.1 |
+| 前端 | React 18 + Vite | 生态成熟；HMR 开发体验好 |
+| 前端设计 | CaseAI Match 浅色操作台 | 见 §10.1 |
 | LLM | OpenAI 兼容 API | 可插拔，支持自定义 baseURL（适配 njusehub 中转）；MockLLM 用于离线测试 |
 | 分发 | Docker（多阶段构建） | 一键部署；环境隔离；`node:22-alpine` 最小镜像 |
 
-### 10.1 前端设计系统（Open Design）
+### 10.1 前端设计系统（CaseAI）
 
-本项目 WebUI 按课程通用要求 §3.6，使用 **[Open Design](https://github.com/nexu-io/open-design)** 进行界面开发，并在此说明所选设计系统与 skill。
+本项目 WebUI 当前视觉与信息架构对齐 **CaseAI Match** 浅色 SaaS 操作台（近白画布、炭黑主按钮、Inter）。早期 Terminal / Mission Control 规格保留为历史文档。
 
 | 项 | 选型 | 说明 |
 |----|------|------|
-| 工具链 | [Open Design](https://github.com/nexu-io/open-design) | brief → design system → artifact → 迁入 `webui/` |
-| 设计系统 | **Harness Terminal** | 高对比终端风（近黑底、终端绿强调、等宽字体、低圆角） |
+| 设计系统 | **CaseAI Match** | `#F7F7F8` 画布、`#FFFFFF` 主舞台、炭黑 `#18181B` 主按钮；无彩色主色 |
 | 设计合同 | `webui/DESIGN.md` | 色板、字体、布局、组件与动效 token |
-| Open Design skill | prototype / live-artifact | 产出控制台结构与视觉方向 |
-| Cursor skill | `emil-design-eng` | 按钮 press、HITL 入场、连接 LED pulse 等交互打磨（ease-out，&lt;300ms） |
-| 实现落点 | `webui/src/` | `styles.css` + `ChatPanel` / `AgentLog` / `HITLModal` |
+| 规格 | `docs/superpowers/specs/2026-08-13-caseai-webui-redesign.md` | IA：Home / Session / Projects / Settings |
+| 实现落点 | `webui/src/App.tsx` + `styles.css` + components | 轮次卡、FeedbackTrail、角色下拉、HITL |
 
-**不做：** 多主题切换、重型 UI 组件库、营销落地页。WebUI 定位为单页 Operator Console；Harness 内核可在无 UI 下独立测试。
+**不做：** 重型 UI 组件库、营销落地页、复活整套深色 ControlDeck。Harness 内核可在无 UI 下独立测试。
 
-设计过程纪要：`docs/superpowers/specs/2026-08-07-harness-terminal-ui-design.md`。
+历史设计纪要：`docs/superpowers/specs/2026-08-07-harness-terminal-ui-design.md`、`docs/superpowers/specs/2026-08-08-mission-control-webui-design.md`。
 
 ---
 
@@ -559,7 +582,7 @@ class FeedbackInjector {
 | 4 | 凭据管理 | 首次录入 Key → 关闭重启 → 无需重新输入 | `tests/credentials/store.test.ts` 通过 |
 | 5 | 一键测试（含 mock LLM） | `npm test` 全部通过，所有核心机制测试不依赖网络与真实 LLM | CI 中 `npm test` 绿色 |
 | 6 | Docker 分发 | `docker build && docker run` 启动，`curl localhost:3000/health` 返回 200 | CI 中 `docker build` 成功 |
-| 7 | 线上部署 | 提供公网 URL，WebUI 正常运行 | Render 部署后浏览器访问 URL |
+| 7 | 线上部署 | 提供公网 URL，WebUI 正常运行 | 访问 https://coding-agent-harness.zeabur.app |
 | 8 | 机制演示（§A.6） | 在 mock LLM 下确定性复现：① 护栏拦截一个危险动作；② 注入失败 → 反馈闭环使 agent 改变行为；③ 重点维度（反馈闭环）的确定性行为 | `tests/integration/harness-demo.test.ts` 包含三个测试用例，mock LLM 下每次结果一致 |
 
 ---
@@ -574,9 +597,9 @@ class FeedbackInjector {
 | Docker 镜像体积过大 | 分发体验差（下载慢） | 多阶段构建（webui-builder → backend-builder → runtime）；node:alpine 基础镜像；仅复制生产依赖 |
 | 单用户架构限制 | 无法支持多用户并发 | 当前版本明确为单用户；架构上 AgentLoop 是无状态的（可扩展为多实例） |
 | WebSocket 断连 | 前端丢失实时更新 | 前端 `useWebSocket` hook 包含重连逻辑；状态在重连后可从服务端恢复 |
-| 前端设计工作量 | 延期 | 使用 Open Design 的 `emil-design-eng` skill 加速 UI 开发；核心机制在 CLI 下可独立测试，UI 为锦上添花 |
+| 前端设计工作量 | 延期 | CaseAI 规格已落地；核心机制在 CLI / mock 下可独立测试 |
 
 ---
 
-> **SPEC 版本**：v2.1（补充 Open Design / Harness Terminal 前端设计系统说明）  
+> **SPEC 版本**：v2.2（同步反馈闭环加深、多角色编排、CaseAI WebUI；更新架构图与 §10.1）
 > **最后更新**：2026-08-07

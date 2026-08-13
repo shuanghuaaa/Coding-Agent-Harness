@@ -3,7 +3,7 @@
 > AI4SE 期末项目 · A · Coding Agent Harness  
 > **Agent = LLM + Harness** — 将 LLM 封装成一台能稳定、可靠编码的机器。
 
-Coding Agent Harness 是一个以 **反馈闭环** 为核心贡献的编码智能体系统。它封装 LLM，提供工具、治理护栏、记忆、反馈闭环和 WebUI 交互界面，让使用者看清 Agent 的每一个决策环节。
+Coding Agent Harness 是一个以 **反馈闭环** 为核心贡献的编码智能体系统。它封装 LLM，提供工具、治理护栏、记忆、反馈闭环、多角色编排和 CaseAI 风格 WebUI，让使用者看清 Agent 的每一个决策与修正环节。
 
 ## 目录
 
@@ -13,17 +13,18 @@ Coding Agent Harness 是一个以 **反馈闭环** 为核心贡献的编码智�
 - [API Key 安全配置](#api-key-安全配置)
 - [目录结构](#目录结构)
 - [核心机制](#核心机制)
+- [WebUI](#webui)
 - [测试](#测试)
 - [云部署](#云部署)
 - [已知限制](#已知限制)
-- [许可证](#许可证)
+- [文档索引](#文档索引)
 
 ## 快速开始
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/<your-username>/coding-agent-harness.git
-cd coding-agent-harness
+git clone https://github.com/shuanghuaaa/Coding-Agent-Harness.git
+cd Coding-Agent-Harness
 
 # 2. 安装依赖
 npm install
@@ -118,7 +119,7 @@ docker-compose up
 # 设置主密码
 export HARNESS_MASTER_PASSWORD="your-strong-password"
 
-# 启动后，通过 API 存储密钥
+# 启动后，通过 API 或 WebUI Settings 存储密钥
 curl -X POST http://localhost:3000/api/credentials \
   -H "Content-Type: application/json" \
   -d '{"service":"llm","account":"openai","password":"sk-your-key"}'
@@ -139,29 +140,31 @@ curl -X POST http://localhost:3000/api/credentials \
 ## 目录结构
 
 ```
-coding-agent-harness/
+Coding-Agent-Harness/
 ├── src/
 │   ├── agent/          # Agent 主循环、上下文构建、停止条件
 │   ├── llm/            # LLM 抽象层（MockLLM、OpenAI 兼容）
 │   ├── tools/          # 工具系统（文件、Shell、搜索、Git、测试）
-│   ├── feedback/       # 反馈闭环（分类器、校验器、注入器）
-│   ├── guard/          # 治理护栏（危险动作拦截）
-│   ├── memory/         # 记忆存储（SQLite）
-│   ├── config/         # 配置加载器
+│   ├── feedback/       # 反馈闭环（校验、分类、注入、摘要、重复失败、多框架解析器）
+│   ├── guard/          # 治理护栏（危险动作拦截，可配置规则）
+│   ├── memory/         # 记忆存储（SQLite）+ 关键词检索
+│   ├── orchestration/  # 多角色编排（Coder / Reviewer / Tester）
+│   ├── config/         # 配置加载器（.rules）
 │   ├── credentials/    # 凭证存储（AES 文件、Windows CM）
-│   ├── server/         # HTTP + WebSocket 服务器
+│   ├── server/         # HTTP + WebSocket 服务器、会话持久化
+│   ├── workspace/      # 工作区浏览、读文件、检查点
 │   └── utils/          # 日志工具
-├── webui/              # React + Vite 前端
+├── webui/              # React + Vite 前端（CaseAI 浅色操作台）
 │   └── src/
-│       ├── api/        # sessions REST 封装
-│       ├── components/ # TopBar, SessionSidebar, ChatTimeline, ControlDeck, HITLModal 等
-│       └── hooks/      # WebSocket（自动重连）与会话列表钩子
-├── tests/              # 测试（25 个文件，94 个测试）
-├── .github/workflows/  # CI 配置
+│       ├── api/        # sessions / credentials / workspace / checkpoint
+│       ├── components/ # FeedbackTrail, TaskRoundList, TestFileSnippet, HITLModal 等
+│       └── hooks/      # WebSocket（自动重连）与会话列表
+├── tests/              # 约 41 个测试文件、约 185 个用例（Mock LLM，无网络）
+├── docs/superpowers/   # 设计规格与实现计划
+├── .github/workflows/  # CI（含测试与 Docker build）
 ├── Dockerfile
 ├── docker-compose.yml
-├── SPEC.md             # 设计文档
-├── PLAN.md             # 实现计划
+├── SPEC.md             # 设计规格
 └── README.md
 ```
 
@@ -173,71 +176,79 @@ coding-agent-harness/
 
 ### 2. 反馈闭环（★ 主要贡献）
 
-确定性校验器 + 失败分类 + 多轮自我修正：
+确定性校验器 + 失败分类 + 多轮自我修正，并可在 WebUI 中「讲故事」：
 
-- **FailureClassifier**：将测试失败分类为 `compile`、`assertion`、`timeout`、`runtime`
-- **FeedbackValidator**：解析测试输出，判定通过/失败
-- **FeedbackInjector**：将失败信息注入 LLM 上下文，驱动自我修正
+- **FailureClassifier**：`compile` / `assertion` / `timeout` / `runtime`
+- **FeedbackValidator**：解析测试输出，判定通过/失败；可插拔解析器（vitest / jest / mocha / generic）
+- **FeedbackInjector**：将失败摘要、分类、`file:line`、重复失败警告注入 LLM 上下文
+- **重复失败检测**：同一测试连续失败时标记 `repeatedFailure` 并写入注入文案
+- **结构化 history**：`feedbackHistory` 含 `summary`、`failureTypes`、`failures`、`repeatedFailure`
+- **UI**：`FeedbackTrail` 时间线 + 失败时可拉取测试文件片段（`TestFileSnippet`）
 
-### 3. 治理护栏 + HITL
+### 3. 多角色编排
 
-- 7 种危险动作模式（`rm -rf`、`git push --force`、`DROP TABLE`、`sudo`、系统文件写入/删除、外发网络请求）
-- HITL 审批：拦截危险操作后，通过 WebUI 弹窗请求人工确认
-- 支持修改参数后批准执行
+- 角色：`coder`（可写）、`reviewer`（只读审查）、`tester`（跑测）
+- 会话内可多选 1～3 个角色；1 个走单角色 loop，2～3 个按 coder → reviewer → tester 顺序编排
+- 项目页点击角色卡片即可打开预勾该角色的会话（无独立编排侧栏）
 
-### 4. 工具系统
+### 4. 治理护栏 + HITL
+
+- 危险动作模式拦截（含可配置的 `guardrail.config.json`）
+- HITL 审批：拦截后经 WebUI 弹窗允许 / 拒绝 / 改参后允许
+
+### 5. 工具系统
 
 - 文件操作（read/write/delete）— 带路径遍历沙箱
 - Shell 命令执行 — 异步、超时保护
 - 代码搜索 — ripgrep + Node.js 回退
 - Git diff
-- 测试运行
+- 测试运行（触发反馈闭环）
 
-### 5. 记忆（SQLite）
+### 6. 记忆（SQLite）
 
 - 跨会话存储项目约定、历史决策、偏好设置
-- 按需提供给 LLM（非全量载入）
+- `KeywordRetriever` 按任务关键词检索后注入上下文（非全量硬塞）
+
+## WebUI
+
+CaseAI Match 风格的浅色 SaaS 操作台（近白画布 + 炭黑主按钮 + Inter）：
+
+| 页面 | 作用 |
+|------|------|
+| Home | 问候 + 主输入 + 角色选择 |
+| Session | 对话流、轮次卡、反馈轨迹、Composer、角色下拉 |
+| Projects | 工作区绑定；角色卡片进入会话 |
+| Settings | API Key、模型与连接信息 |
+
+设计合同见 `webui/DESIGN.md`；规格见 `docs/superpowers/specs/2026-08-13-caseai-webui-redesign.md`。
 
 ## 测试
 
 所有核心机制均使用 Mock LLM 进行确定性单元测试，不依赖网络或真实 LLM。
 
 ```bash
-# 一键运行全部测试
 npm test
-
-# 输出：25 个文件，94 个测试全部通过
 ```
 
 ### 机制演示
 
-测试文件 `tests/integration/harness-demo.test.ts` 中包含：
+`tests/integration/harness-demo.test.ts` 覆盖：
 
-1. 治理护栏拦截危险动作（`rm -rf /`）
+1. 治理护栏拦截危险动作
 2. 反馈闭环：注入失败 → Agent 修正 → 通过
-3. 反馈闭环确定性行为验证
+3. 重复失败警告等反馈加深行为
 
-测试文件 `tests/agent/hitl.test.ts` 中包含：
+`tests/agent/hitl.test.ts` 覆盖批准 / 拒绝 / 改参后执行。
 
-4. HITL 回调拦截危险动作
-5. 批准后执行危险操作
-6. 拒绝后阻止危险操作
-7. 修改参数后批准执行
+反馈单元测试：`tests/feedback/`（validator、classifier、injector、summary、repeated-failure、parsers）。
 
 ## 云部署
 
-### Render
+### Zeabur
 
-项目根目录包含 `render.yaml` 配置文件。在 [Render](https://render.com) 上：
+线上地址：https://coding-agent-harness.zeabur.app
 
-1. 连接 GitHub 仓库
-2. Render 自动检测 `render.yaml` 并创建 Web Service
-3. 在 Render Dashboard 中设置 `LLM_API_KEY` 等环境变量
-4. 部署完成后获得公网 URL（如 `https://coding-agent-harness.onrender.com`）
-
-### 其他平台
-
-支持任何支持 Docker 的云平台（Railway、Fly.io、Vercel + Docker 等）。
+本项目部署在 [Zeabur](https://zeabur.com)。连接 GitHub 仓库后按 Dockerfile 构建 Web Service，并在控制台配置环境变量（如 `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`、`PORT` 等）。
 
 ## 已知限制
 
@@ -247,6 +258,13 @@ npm test
 - **文件工具沙箱**：依赖工作区根目录设置，需确保 `HARNESS_WORKSPACE` 正确配置
 - **平台兼容**：Windows 和 macOS/Linux 路径分隔符均支持，但部分 shell 命令可能因操作系统而异
 
-## 许可证
+## 文档索引
 
-MIT
+| 文档 | 说明 |
+|------|------|
+| `SPEC.md` | 完整设计规格与 §A.4 合规声明 |
+| `webui/DESIGN.md` | WebUI 视觉与组件合同（CaseAI） |
+| `docs/superpowers/specs/2026-08-14-feedback-loop-deepening-design.md` | 反馈闭环加深 |
+| `docs/superpowers/specs/2026-08-14-session-role-multiselect-design.md` | 会话角色多选 |
+| `docs/superpowers/specs/2026-08-13-caseai-webui-redesign.md` | CaseAI WebUI 重设计 |
+| `docs/superpowers/specs/2026-08-10-file-session-orchestrator-design.md` | 会话 / 编排基础 |

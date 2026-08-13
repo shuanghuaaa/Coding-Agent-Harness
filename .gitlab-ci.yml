@@ -16,7 +16,8 @@ docker-build:
   services:
     - docker:dind
   script:
-    - docker build -t harness:latest .
+    - docker build -t coding-agent-harness:latest .
   only:
+    - master
     - main
     - merge_requests

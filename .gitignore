@@ -8,3 +8,6 @@ dist/
 /credentials/
 .DS_Store
 .worktrees/
+.superpowers/
+*.tsbuildinfo
+~$*
