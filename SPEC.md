@@ -582,7 +582,7 @@ class FeedbackInjector {
 | 4 | 凭据管理 | 首次录入 Key → 关闭重启 → 无需重新输入 | `tests/credentials/store.test.ts` 通过 |
 | 5 | 一键测试（含 mock LLM） | `npm test` 全部通过，所有核心机制测试不依赖网络与真实 LLM | CI 中 `npm test` 绿色 |
 | 6 | Docker 分发 | `docker build && docker run` 启动，`curl localhost:3000/health` 返回 200 | CI 中 `docker build` 成功 |
-| 7 | 线上部署 | 提供公网 URL，WebUI 正常运行 | 访问 https://coding-agent-harness.zeabur.app |
+| 7 | 线上部署 | 提供公网 URL，WebUI 正常运行 | 访问 https://coding-agent-harness.zeabur.app（实例位于德国节点，国内网络不稳定时以 `/health` 或本地 Docker 复现，见 README「云部署」） |
 | 8 | 机制演示（§A.6） | 在 mock LLM 下确定性复现：① 护栏拦截一个危险动作；② 注入失败 → 反馈闭环使 agent 改变行为；③ 重点维度（反馈闭环）的确定性行为 | `tests/integration/harness-demo.test.ts` 包含三个测试用例，mock LLM 下每次结果一致 |
 
 ---

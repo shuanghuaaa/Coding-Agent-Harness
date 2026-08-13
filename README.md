@@ -261,9 +261,17 @@ npm test
 
 ### Zeabur
 
-线上 WebUI：https://coding-agent-harness.zeabur.app
+线上 WebUI：https://coding-agent-harness.zeabur.app  
+
+健康检查：https://coding-agent-harness.zeabur.app/health （正常时返回 `{"status":"ok"}`）
 
 **部署架构：** GitHub 仓库 `master` → Zeabur 拉取并 Docker 构建 → 容器监听 `PORT` → 公网域名反代到 WebUI（Express 静态资源 + WebSocket / REST）。
+
+**机房位置：** 服务部署在 Zeabur **德国（Europe / Frankfurt 一带）** 节点。从国内校园网访问时，偶发超时、TLS 握手失败或页面长时间转圈，多半是跨境链路问题，不代表服务未启动。可依次尝试：
+
+1. 打开 `/health` 确认进程是否存活；
+2. 更换网络（手机热点 / 非校园网）或使用可访问国际站点的网络后再打开 WebUI；
+3. 若仍无法访问，按上文「安装与运行」或「分发方式 (Docker)」在本地复现，功能与线上一致。
 
 在 Zeabur 控制台配置环境变量（如 `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`、`PORT`、`HARNESS_WORKSPACE` 等）。密钥只放在平台密钥/环境变量中，不进镜像层与 Git。
 
@@ -272,6 +280,7 @@ npm test
 - **单用户**：当前版本不支持多用户并发任务
 - **无任务队列**：同一时间只能运行一个 Agent 任务
 - **公网暴露面**：当前版本不设应用层访问令牌，生产环境建议在网关加认证
+- **跨境访问：** 线上实例位于德国节点，国内部分网络可能无法稳定打开公网 URL，可用 `/health` 探测或按 README 本地复现
 - **文件工具沙箱**：依赖工作区根目录设置，需确保 `HARNESS_WORKSPACE` 正确配置
 - **平台兼容**：Windows 和 macOS/Linux 路径分隔符均支持，但部分 shell 命令可能因操作系统而异
 
