@@ -1,31 +1,68 @@
-# Task 4 Report: Role registry + tool allowlist
+# Task 4 Report: Validator stdout priority + failureTypes
 
-## Status
-**Complete**
+## Status: DONE
 
-## Changes
-- `src/orchestration/roles.ts`: `AgentRole`, `RoleDefinition`, `ROLE_DEFINITIONS` (coder/reviewer/tester with bilingual prompts), `filterToolsForRole`.
-- `tests/orchestration/roles.test.ts`: Tool isolation and systemPrompt coverage.
+## Summary
 
-## Tool allowlists (verified against `src/index.ts`)
-| Role | Tools |
-|------|-------|
-| coder | read_file, write_file, delete_file, shell, search, git_diff, run_test |
-| reviewer | read_file, search, git_diff |
-| tester | read_file, run_test, search, git_diff |
+Reordered `FeedbackValidator.validate` to parse stdout failures before falling back to generic stderr error classification. Always sets `failureTypes` on pass (empty array) and fail paths.
 
-## Commits
-- `feat(orchestration): role registry with tool allowlists`
+## Files Changed
 
-## Tests
+| Action | Path |
+|--------|------|
+| Modified | `src/feedback/validator.ts` |
+| Modified | `tests/feedback/validator.test.ts` |
+
+## TDD Evidence
+
+### Step 1–2: RED — new test added
+
+Added `prefers parseable stdout over generic stderr error` test.
+
+**Command:**
 ```
-✓ tests/orchestration/roles.test.ts (4 tests)
-4/4 passed
+npm test -- tests/feedback/validator.test.ts
 ```
 
-## TDD
-1. RED: import failed — `roles.ts` missing
-2. GREEN: implemented registry + filter; all 4 tests pass
+**Result:** Exit code 1 — `expected '(unknown test)' to be 'add(1, 2)'` (error-only path used when both stdout and error present)
+
+### Step 3: Implementation
+
+- Parse stdout (FAIL/fail chain + line fallback) before checking `error`
+- Return parsed stdout failures when present, even if `error` is set
+- Always set `failureTypes: [...new Set(failures.map((f) => f.type))]` on fail paths
+- Pass path returns `failureTypes: []`
+
+### Step 4: GREEN
+
+**Command:**
+```
+npm test -- tests/feedback/validator.test.ts
+```
+
+**Result:** Exit code 0
+
+```
+ ✓ tests/feedback/validator.test.ts  (4 tests) 15ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+```
+
+## Self-Review
+
+| Check | Result |
+|-------|--------|
+| Matches brief verbatim | Yes |
+| Only validator + tests touched | Yes |
+| stdout preferred over generic error | Yes |
+| failureTypes always set | Yes |
+| No git commit | Yes — skipped per instruction |
 
 ## Concerns
-- None. Tester uses `git_diff` instead of `shell` per brief preference.
+
+None.
+
+## Commits
+
+None (skipped per user instruction).

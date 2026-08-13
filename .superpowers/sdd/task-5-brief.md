@@ -1,56 +1,45 @@
-﻿### Task 5: Artifact parsing + gate decisions
+﻿### Task 5: Wire AgentLoop history + progress.feedback
 
 **Files:**
-- Create: `src/orchestration/artifacts.ts`
-- Create: `tests/orchestration/artifacts.test.ts`
+- Modify: `src/agent/loop.ts`
+- Modify: `webui/src/types.ts` (mirror types for later UI; can be same task or Task 6)
+- Test: extend `tests/integration/harness-demo.test.ts` or add `tests/agent/loop-feedback.test.ts`
 
 **Interfaces:**
+- Consumes: `detectRepeatedFailure`, `toFeedbackHistoryEntry`
 - Produces:
-  ```ts
-  export interface StageArtifact {
-    role: AgentRole;
-    summary: string;
-    changedFiles: string[];
-    findings?: Array<{ severity: 'info' | 'warn' | 'block'; message: string }>;
-    testStatus?: 'pass' | 'fail' | 'skipped';
-    rawExcerpt?: string;
-  }
-  export type GateDecision =
-    | { action: 'continue' }
-    | { action: 'retry_coder'; reason: string }
-    | { action: 'warn'; reason: string };
+  - `RunResult.feedbackHistory: FeedbackHistoryEntry[]`
+  - `RoundProgress.feedback?: FeedbackHistoryEntry` (optional)
+  - still sets `feedbackStatus`
 
-  export function parseArtifactFromAssistant(role: AgentRole, content: string, changedFiles: string[]): StageArtifact;
-  export function decideGate(artifact: StageArtifact): GateDecision;
-  ```
-- Parser: look for fenced JSON block \`\`\`json ... \`\`\` or a line starting with `ARTIFACT:` + JSON; on failure return artifact with empty findings / `testStatus: 'skipped'` and summary = truncated content; `decideGate` then `continue` (warn path can be logged by orchestrator when parse soft-failed — expose `parseOk: boolean` on artifact or return `{ artifact, parseOk }`)
+- [ ] **Step 1: Write/adjust integration assertion**
 
-Prefer:
+In harness-demo after run, assert:
 
 ```ts
-export function parseStageOutput(role: AgentRole, content: string, changedFiles: string[]): { artifact: StageArtifact; parseOk: boolean }
+expect(result.feedbackHistory.some((h) => h.status === 'fail')).toBe(true);
+expect(result.feedbackHistory.some((h) => h.status === 'pass')).toBe(true);
+expect(result.feedbackHistory.find((h) => h.status === 'fail')?.failureTypes?.length).toBeGreaterThan(0);
 ```
 
-Gate:
-- reviewer + any finding severity `block` → `retry_coder`
-- tester + `testStatus === 'fail'` → `retry_coder`
-- else `continue`
+Add a second demo test with two consecutive failing `run_test` mocks returning same FAIL line, then pass — assert `repeatedFailure` on second fail entry and a system message containing `WARNING`.
 
-- [ ] **Step 1: Write tests** covering block, fail, pass, malformed → continue
+- [ ] **Step 2: Run — expect FAIL on new fields**
 
-- [ ] **Step 2: Run — FAIL**
+- [ ] **Step 3: Update loop.ts executeToolCall feedback block**
 
-- [ ] **Step 3: Implement**
-
-- [ ] **Step 4: Run — PASS**
-
-- [ ] **Step 5: Commit**
-
-```powershell
-git add src/orchestration/artifacts.ts tests/orchestration/artifacts.test.ts
-git commit -m "feat(orchestration): stage artifacts and gate decisions"
+```ts
+let feedback = this.config.validator.validate(result.content, round, result.error);
+feedback = detectRepeatedFailure(feedback, this.feedbackHistory);
+const entry = toFeedbackHistoryEntry(feedback);
+this.feedbackHistory.push(entry);
+this.config.injector.inject(this.messages, feedback);
+feedbackStatus = feedback.status;
+// pass entry into emitProgress as feedback: entry
 ```
+
+Update `RoundProgress` and `RunResult` types accordingly. Ensure `emitProgress` includes `feedback: entry` when present.
+
+- [ ] **Step 4: Run harness-demo + loop tests — expect PASS**
 
 ---
-
-

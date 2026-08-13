@@ -1,42 +1,58 @@
-# Task 3 Report: AgentLoop resume via priorMessages
+# Task 3 Report: Injector includes type + WARNING
 
-## Status
-**Complete**
+## Status: DONE
 
-## Changes
-- `src/agent/loop.ts`: Added `RunOptions` (`priorMessages`, `agentRole`), extended `RoundProgress` with `agentRole`, updated `run()` to prepend non-system prior messages before the new user turn, reset `feedbackHistory` per run, propagate `agentRole` in progress events.
-- `tests/agent/loop-resume.test.ts`: New test verifying prior conversation history is preserved and new task appended.
+## Summary
 
-## Commits
-- `feat(agent): resume runs with priorMessages`
+Updated `FeedbackInjector.buildMessage` to include failure `[type]` in each failure line and an optional `WARNING:` block when `feedback.repeatedFailure` is set. Extended injector tests accordingly.
 
-## Tests
+## Files Changed
+
+| Action | Path |
+|--------|------|
+| Modified | `src/feedback/injector.ts` |
+| Modified | `tests/feedback/injector.test.ts` |
+
+## TDD Evidence
+
+### Step 1–2: Tests extended (type + WARNING)
+
+Added `expect(message).toContain('[assertion]')` to the existing failure test and a new test for `repeatedFailure` WARNING output.
+
+### Step 3: Implementation
+
+- Failure lines now: `` `  - ${f.testName}: expected ${f.expected}, got ${f.received} [${f.type}] [${f.file}:${f.line}]` ``
+- When `feedback.repeatedFailure` is set, inserts blank line + `` `WARNING: ${feedback.repeatedFailure.message}` `` before the closing instruction
+
+### Step 4: GREEN
+
+**Command:**
 ```
-✓ tests/agent/loop-resume.test.ts (1 test)
-✓ tests/agent/loop.test.ts (4 tests)
-5/5 passed
+npx vitest run tests/feedback/injector.test.ts
 ```
+
+**Result:** Exit code 0
+
+```
+ ✓ tests/feedback/injector.test.ts  (4 tests) 14ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+```
+
+## Self-Review
+
+| Check | Result |
+|-------|--------|
+| Matches brief verbatim | Yes |
+| Only injector + tests touched | Yes |
+| Consumes `TestFailure.type` and `Feedback.repeatedFailure` | Yes |
+| No git commit | Yes — skipped per instruction |
 
 ## Concerns
-- ~~Brief suggested `this.cancelled = false` at run start; omitted because it breaks existing `loop.test.ts` ("returns cancelled when cancel() is called" — cancel invoked before run). Pre-run cancel semantics preserved.~~
-- ~~No test yet for `agentRole` on progress events (brief mentions it; only resume message ordering tested).~~
 
-## Fix (Important finding)
-- `src/agent/loop.ts`: Reset `this.cancelled = false` at start of each `run()` alongside `feedbackHistory` reset.
-- `tests/agent/loop.test.ts`: Replaced pre-run cancel test with "resets cancelled flag at start of each run"; mid-loop cancel test retained.
-- `tests/agent/loop-resume.test.ts`: Added test that `onProgress` receives `agentRole` when `options.agentRole` is set.
+None.
 
-### Commit
-- `fix(agent): reset cancelled flag at start of each run`
+## Commits
 
-### Tests (after fix)
-```
-✓ tests/agent/loop-resume.test.ts (2 tests)
-✓ tests/agent/loop.test.ts (4 tests)
-6/6 passed
-```
-
-## TDD
-1. RED: loop-resume test failed (`users` missing `'first'`)
-2. GREEN: priorMessages wiring in `run()`
-3. Regression: loop.test.ts all green after omitting cancelled reset
+None (skipped per user instruction).

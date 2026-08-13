@@ -1,31 +1,17 @@
-﻿### Task 8: Frontend — types, API, WebSocket hook
+﻿### Task 8: End-to-end verification
 
-**Files:**
-- Modify: `webui/src/types.ts`
-- Modify: `webui/src/api/workspace.ts`
-- Modify: `webui/src/hooks/useWebSocket.ts`
+- [ ] **Step 1: Run backend tests**
 
-**Interfaces:**
-- `getWorkspaceFile(path: string): Promise<{ path; content; size }>`
-- `sendTask(task: string, opts?: { sessionId?: number })`
-- `sendOrchestrate(task: string, opts?: { maxRetries?: number; sessionId?: number })`
-- State: `orchestratorStatus`, `activeSessionId` can live in App; hook exposes status + clear
-- Progress type includes `agentRole?: string`
-- On progress, if agentRole present, include in chat item (extend ChatItem with `agentRole?: string`)
+Run: `npx vitest run tests/feedback tests/integration/harness-demo.test.ts`
+Expected: all PASS
 
-- [ ] **Step 1: Implement API + types**
+- [ ] **Step 2: Manual checklist**
+  - Start harness + webui
+  - Run a task that fails then passes tests
+  - Confirm trail text readable
+  - Expand test snippet when path valid
+  - Confirm non-test tools say「执行完成」not「测试未通过」
 
-- [ ] **Step 2: Update useWebSocket** for new message types and send signatures; seed chat when App passes history separately is OK
-
-- [ ] **Step 3: `npm run build` in webui** — fix TS errors
-
-- [ ] **Step 4: Commit**
-
-```powershell
-git add webui/src/types.ts webui/src/api/workspace.ts webui/src/hooks/useWebSocket.ts
-git commit -m "feat(webui): APIs and WS for file read, resume, orchestrate"
-```
+- [ ] **Step 3: Tick spec §8 acceptance boxes in the design doc** (optional note in AGENT_LOG if exists)
 
 ---
-
-

@@ -1,99 +1,62 @@
-﻿### Task 3: AgentLoop resume via priorMessages
+﻿### Task 3: Injector includes type + WARNING
 
 **Files:**
-- Modify: `src/agent/loop.ts` — `run` signature + `RoundProgress.agentRole?`
-- Create: `tests/agent/loop-resume.test.ts`
+- Modify: `src/feedback/injector.ts`
+- Modify: `tests/feedback/injector.test.ts`
 
 **Interfaces:**
-- Consumes: `ContextBuilder.build(history)`
-- Produces: `run(task: string, options?: { priorMessages?: Message[]; agentRole?: string }): Promise<RunResult>`
-- When `priorMessages` provided: strip any `role==='system'` from prior, then `build([...nonSystemPrior, { role:'user', content: task }])`
-- Progress events include `agentRole` when options.agentRole set
+- Consumes: `Feedback.repeatedFailure`, `TestFailure.type`
+- Produces: `buildMessage` string containing `[type]` and optional `WARNING:`
 
-- [ ] **Step 1: Write failing test**
+- [ ] **Step 1: Extend failing assertions in injector.test.ts**
+
+Add to existing fail test:
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import { AgentLoop } from '../../src/agent/loop';
-import { MockLLM } from '../../src/llm/mock-llm';
-import { ToolDispatcher } from '../../src/tools/dispatcher';
-import { ContextBuilder } from '../../src/agent/context-builder';
-import { StopCondition } from '../../src/agent/stop-condition';
-import { FeedbackValidator } from '../../src/feedback/validator';
-import { FeedbackInjector } from '../../src/feedback/injector';
+expect(message).toContain('[assertion]');
+```
 
-function makeLoop(responses: ConstructorParameters<typeof MockLLM>[0]) {
-  return new AgentLoop({
-    llm: new MockLLM(responses),
-    dispatcher: new ToolDispatcher([]),
-    contextBuilder: new ContextBuilder({ systemPrompt: 'sys', configRules: [], memories: [] }),
-    stopCondition: new StopCondition({ maxRounds: 5 }),
-    validator: new FeedbackValidator(),
-    injector: new FeedbackInjector(),
-  });
-}
+Add new test:
 
-describe('AgentLoop resume', () => {
-  it('appends new user turn after prior messages', async () => {
-    const loop = makeLoop([{ content: 'continued', tool_calls: [], finish_reason: 'stop' }]);
-    const result = await loop.run('follow up', {
-      priorMessages: [
-        { role: 'user', content: 'first' },
-        { role: 'assistant', content: 'answer1' },
-      ],
-    });
-    expect(result.status).toBe('completed');
-    const users = result.messages.filter((m) => m.role === 'user').map((m) => m.content);
-    expect(users).toContain('first');
-    expect(users[users.length - 1]).toBe('follow up');
-    expect(result.messages.some((m) => m.role === 'system')).toBe(true);
-  });
+```ts
+it('includes WARNING when repeatedFailure is set', () => {
+  const feedback: Feedback = {
+    status: 'fail',
+    round: 3,
+    summary: '1 test failed',
+    failures: [{
+      testName: 'add', expected: '3', received: '-1', file: 't.ts', line: 1, type: 'assertion', raw: '',
+    }],
+    repeatedFailure: {
+      testName: 'add',
+      streak: 3,
+      message: '"add" failed 3 times in a row. Try a different fix.',
+    },
+  };
+  const message = injector.buildMessage(feedback);
+  expect(message).toContain('WARNING:');
+  expect(message).toContain('3 times');
 });
 ```
 
-- [ ] **Step 2: Run — expect FAIL** (run ignores options)
+- [ ] **Step 2: Run — expect FAIL on missing type/WARNING**
 
-Run: `npm test -- tests/agent/loop-resume.test.ts`
+Run: `npx vitest run tests/feedback/injector.test.ts`
 
-- [ ] **Step 3: Implement minimal change in `loop.ts`**
+- [ ] **Step 3: Update buildMessage**
 
 ```ts
-export interface RoundProgress {
-  round: number;
-  assistantContent: string;
-  actions: Array<{ tool: string; result: string }>;
-  feedbackStatus?: string;
-  agentRole?: string;
-}
-
-export interface RunOptions {
-  priorMessages?: Message[];
-  agentRole?: string;
-}
-
-async run(task: string, options?: RunOptions): Promise<RunResult> {
-  this.cancelled = false;
-  this.feedbackHistory = [];
-  const prior = (options?.priorMessages ?? []).filter((m) => m.role !== 'system');
-  this.messages = this.config.contextBuilder.build([
-    ...prior,
-    { role: 'user', content: task },
-  ]);
-  // ... rest unchanged; when emitProgress, pass agentRole: options?.agentRole
-}
+...feedback.failures.map(
+  (f) =>
+    `  - ${f.testName}: expected ${f.expected}, got ${f.received} [${f.type}] [${f.file}:${f.line}]`
+),
+...(feedback.repeatedFailure
+  ? ['', `WARNING: ${feedback.repeatedFailure.message}`]
+  : []),
+'',
+'Please analyze the failures and fix the code. Run the tests again after making changes.',
 ```
 
-Update `emitProgress` / call sites to attach `agentRole` from a private field set at start of `run`: `this.currentAgentRole = options?.agentRole`.
-
-- [ ] **Step 4: Run — expect PASS** (also run `tests/agent/loop.test.ts` to ensure no regression)
-
-- [ ] **Step 5: Commit**
-
-```powershell
-git add src/agent/loop.ts tests/agent/loop-resume.test.ts
-git commit -m "feat(agent): resume runs with priorMessages"
-```
+- [ ] **Step 4: Run — expect PASS**
 
 ---
-
-
