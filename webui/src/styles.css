@@ -155,27 +155,6 @@ textarea {
   gap: 8px;
 }
 
-.app-rail-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: var(--ink);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  margin-bottom: 12px;
-  border: none;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: transform 120ms var(--ease-out);
-}
-
-.app-rail-logo:hover {
-  transform: scale(1.04);
-}
-
 .app-rail-nav {
   display: flex;
   flex-direction: column;
@@ -230,6 +209,9 @@ textarea {
 .app-page-brand {
   flex-shrink: 0;
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   margin: 0;
   padding: 16px 20px 8px;
   border: none;
@@ -241,6 +223,19 @@ textarea {
   line-height: 1.2;
   cursor: pointer;
   text-align: left;
+}
+
+.app-page-brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .app-page-brand:hover {

@@ -831,15 +831,6 @@ export default function App() {
       )}
 
       <aside className="app-rail" aria-label="主导航">
-        <button
-          type="button"
-          className="app-rail-logo"
-          onClick={openHome}
-          title="Coding Agent Harness"
-          aria-label="回到首页"
-        >
-          ◆
-        </button>
         <nav className="app-rail-nav">
           {RAIL_ITEMS.map((item) => (
             <button
@@ -868,7 +859,8 @@ export default function App() {
 
       <div className="app-canvas">
         <div className="app-stage">
-        <button type="button" className="app-page-brand" onClick={openHome}>
+        <button type="button" className="app-page-brand" onClick={openHome} aria-label="回到首页">
+          <span className="app-page-brand-mark" aria-hidden>◆</span>
           Coding Agent Harness
         </button>
       <div
