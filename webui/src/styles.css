@@ -206,42 +206,6 @@ textarea {
   display: flex;
 }
 
-.app-page-brand {
-  flex-shrink: 0;
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  padding: 16px 20px 8px;
-  border: none;
-  background: transparent;
-  color: var(--ink);
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  line-height: 1.2;
-  cursor: pointer;
-  text-align: left;
-}
-
-.app-page-brand-mark {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--ink);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.app-page-brand:hover {
-  color: var(--ink-strong);
-}
-
 .app-stage {
   flex: 1;
   min-width: 0;
@@ -251,7 +215,6 @@ textarea {
   box-shadow: var(--shadow-md);
   overflow: hidden;
   display: flex;
-  flex-direction: column;
 }
 
 .app-body {
@@ -3489,13 +3452,43 @@ body.is-col-resizing .col-resize-handle {
   margin-top: 0;
 }
 
+.home-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+
+.home-brand-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.home-brand-name {
+  margin: 0;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  text-align: center;
+}
+
 .home-greet {
   font-family: var(--font);
-  font-size: 28px;
-  line-height: 36px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  color: var(--ink);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--muted);
   text-align: center;
   margin: 0 0 8px;
 }

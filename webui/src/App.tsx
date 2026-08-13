@@ -859,10 +859,6 @@ export default function App() {
 
       <div className="app-canvas">
         <div className="app-stage">
-        <button type="button" className="app-page-brand" onClick={openHome} aria-label="回到首页">
-          <span className="app-page-brand-mark" aria-hidden>◆</span>
-          Coding Agent Harness
-        </button>
       <div
         className={`app-body ${page !== 'session' ? 'no-sidebar' : ''} ${page === 'session' && sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
         style={
@@ -988,7 +984,11 @@ export default function App() {
           {page === 'dashboard' && (
             <div className="page-home">
               <div className="home-ask">
-                <h1 className="home-greet">想做什么？</h1>
+                <div className="home-brand">
+                  <span className="home-brand-mark" aria-hidden>◆</span>
+                  <h1 className="home-brand-name">Coding Agent Harness</h1>
+                </div>
+                <p className="home-greet">想做什么？</p>
                 <form
                   className={`composer ${dragOver ? 'drag-over' : ''} ${composerFocused ? 'expanded' : ''}`}
                   onSubmit={handleSubmit}
