@@ -7,8 +7,6 @@ Coding Agent Harness 是一个以 **反馈闭环** 为核心贡献的编码智�
 
 ## 发布与线上地址
 
-完整条目见 [`LINKS.md`](LINKS.md)。
-
 | 项 | 链接 |
 |----|------|
 | GitHub Release | https://github.com/shuanghuaaa/Coding-Agent-Harness/releases#release-v1.0.0 |
@@ -301,7 +299,6 @@ GitHub Release：https://github.com/shuanghuaaa/Coding-Agent-Harness/releases#re
 
 | 文档 | 说明 |
 |------|------|
-| `LINKS.md` | GitHub Release 与线上域名 |
 | `SPEC.md` | 设计规格与 §A.4 / §A.5 |
 | `PLAN.md` | 实现计划总表（含完成标记） |
 | `SPEC_PROCESS.md` | 规约生成过程与冷启动 |
