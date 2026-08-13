@@ -75,7 +75,7 @@ export function HITLModal({ request, onApprove, onReject }: HITLModalProps) {
         </div>
 
         <div className="hitl-actions">
-          <button type="button" className="btn" onClick={onReject}>
+          <button type="button" className="btn btn-ghost" onClick={onReject}>
             拒绝 <kbd>R</kbd>
           </button>
           <button

@@ -20,17 +20,10 @@ export class FeedbackValidator {
     round: number,
     error?: string
   ): Feedback {
-    if (error) {
-      return {
-        status: 'fail',
-        round,
-        summary: `Tests failed with error: ${error}`,
-        failures: [this.classifier.parseFailure(error)],
-      };
-    }
+    let failures: TestFailure[] = [];
 
     if (testOutput.includes('FAIL') || testOutput.includes('fail')) {
-      let failures = this.parseWithChain(testOutput);
+      failures = this.parseWithChain(testOutput);
 
       if (failures.length === 0) {
         const failureLines = testOutput
@@ -40,12 +33,26 @@ export class FeedbackValidator {
           this.classifier.parseFailure(line)
         );
       }
+    }
 
+    if (failures.length > 0) {
       return {
         status: 'fail',
         round,
         summary: `${failures.length} test(s) failed`,
         failures,
+        failureTypes: [...new Set(failures.map((f) => f.type))],
+      };
+    }
+
+    if (error) {
+      failures = [this.classifier.parseFailure(error)];
+      return {
+        status: 'fail',
+        round,
+        summary: `Tests failed with error: ${error}`,
+        failures,
+        failureTypes: [...new Set(failures.map((f) => f.type))],
       };
     }
 
@@ -54,6 +61,7 @@ export class FeedbackValidator {
       round,
       summary: 'All tests passed',
       failures: [],
+      failureTypes: [],
     };
   }
 

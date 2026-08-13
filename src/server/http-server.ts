@@ -452,9 +452,13 @@ export class HarnessServer {
     if (msg.type === 'task') {
       if (this.rejectIfBusy(ws)) return;
 
-      const { task, sessionId } = msg.payload as { task: string; sessionId?: number };
+      const { task, sessionId, agentRole } = msg.payload as {
+        task: string;
+        sessionId?: number;
+        agentRole?: AgentRole;
+      };
       const priorMessages = this.loadPriorMessages(sessionId);
-      logger.info('Agent task received', { task: task.substring(0, 100), sessionId });
+      logger.info('Agent task received', { task: task.substring(0, 100), sessionId, agentRole });
       ws.send(JSON.stringify({ type: 'status', payload: { status: 'running' } }));
 
       const cp = this.tryCreateCheckpoint();
@@ -462,20 +466,29 @@ export class HarnessServer {
 
       const hitlCallback = this.createHITLCallback(ws);
       const progressEvents: RoundProgress[] = [];
-      const loopWithHITL = new AgentLoop({
-        ...this.loop.config,
-        hitlCallback,
-        onProgress: (event) => {
-          progressEvents.push(event);
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'progress', payload: event }));
-          }
-        },
-      });
+      const onProgress: ProgressCallback = (event) => {
+        const withRole = agentRole ? { ...event, agentRole } : event;
+        progressEvents.push(withRole);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'progress', payload: withRole }));
+        }
+      };
+
+      const allTools = this.loop.config.dispatcher.listTools();
+      const loopWithHITL = agentRole
+        ? this.createRoleLoop(ws, agentRole, allTools, hitlCallback, onProgress)
+        : new AgentLoop({
+            ...this.loop.config,
+            hitlCallback,
+            onProgress,
+          });
       this.runningLoops.set(ws, loopWithHITL);
 
       try {
-        const result = await loopWithHITL.run(task, { priorMessages });
+        const result = await loopWithHITL.run(task, {
+          priorMessages,
+          ...(agentRole ? { agentRole } : {}),
+        });
         logger.info('Agent task completed', { status: result.status, rounds: result.rounds });
         const savedSessionId = this.saveSession(task, result, progressEvents, sessionId);
         const checkpoint = this.buildDiff(cp);
@@ -527,10 +540,11 @@ export class HarnessServer {
     } else if (msg.type === 'orchestrate') {
       if (this.rejectIfBusy(ws)) return;
 
-      const { task, maxRetries, sessionId } = msg.payload as {
+      const { task, maxRetries, sessionId, roles } = msg.payload as {
         task: string;
         maxRetries?: number;
         sessionId?: number;
+        roles?: AgentRole[];
       };
       const resolvedMaxRetries = maxRetries ?? Number(process.env.ORCHESTRATOR_MAX_RETRIES ?? 2);
       const priorMessages = this.loadPriorMessages(sessionId);
@@ -538,6 +552,7 @@ export class HarnessServer {
         task: task.substring(0, 100),
         sessionId,
         maxRetries: resolvedMaxRetries,
+        roles,
       });
       ws.send(JSON.stringify({ type: 'status', payload: { status: 'running' } }));
 
@@ -570,7 +585,10 @@ export class HarnessServer {
       this.runningLoops.set(ws, orchestrator);
 
       try {
-        const result = await orchestrator.run(task, { priorMessages });
+        const result = await orchestrator.run(task, {
+          priorMessages,
+          ...(roles?.length ? { roles } : {}),
+        });
         logger.info('Orchestration completed', { status: result.status, retries: result.retries });
         const savedSessionId = this.saveOrchestrationSession(task, result, sessionId);
         const checkpoint = this.buildDiff(cp);

@@ -9,12 +9,11 @@ import { HITLModal } from './components/HITLModal';
 import { DiffPanel } from './components/DiffPanel';
 import { FolderPicker } from './components/FolderPicker';
 import { TaskRoundList, groupIntoTaskRounds } from './components/TaskRoundList';
-import { FinalResultCard, extractFinalOutput } from './components/FinalResultCard';
 import { loadProjects, upsertProject, removeProject, type SavedProject } from './lib/projects';
 import {
-  LayoutDashboard,
+  Home,
   MessageSquare,
-  Users,
+  Folder,
   Settings,
   Sun,
   Moon,
@@ -23,12 +22,10 @@ import {
   Mic,
   ChevronDown,
   Send,
-  Folder,
   FileCode,
   FileText,
   File,
   Clock,
-  Zap,
   RotateCcw,
   History,
   Trash2,
@@ -44,11 +41,17 @@ import {
   EyeOff,
   type LucideIcon,
 } from 'lucide-react';
-import type { AgentRole, ChatItem, FileTreeNode, RoleStatus, SessionRecord } from './types';
+import type { AgentRole, ChatItem, FileTreeNode, SessionRecord } from './types';
 
 const BUSY = new Set(['running']);
 const MODELS = ['K2.5', 'K2.5 Agent', 'K1.5'];
 const CONTEXT_SECTION_MIN = 14;
+const PROMPT_CHIPS = [
+  '写一个带测试的函数',
+  '修复这个 bug',
+  '重构这段代码',
+  '生成单元测试',
+];
 
 type Page = 'dashboard' | 'session' | 'project' | 'settings';
 type ContextPanelKey = 'files' | 'metrics' | 'checkpoint';
@@ -86,6 +89,7 @@ function chatFromSession(s: SessionRecord): ChatItem[] {
         text: p.assistantContent,
         actions: p.actions,
         feedbackStatus: p.feedbackStatus,
+        ...(p.feedback ? { feedback: p.feedback } : {}),
         ...(p.agentRole ? { agentRole: p.agentRole } : {}),
       });
     });
@@ -108,6 +112,7 @@ function chatFromSession(s: SessionRecord): ChatItem[] {
         text: msg.content,
         actions: pe?.actions,
         feedbackStatus: pe?.feedbackStatus,
+        ...(pe?.feedback ? { feedback: pe.feedback } : {}),
         ...(pe?.agentRole ? { agentRole: pe.agentRole } : {}),
       });
       agentRoundIndex++;
@@ -115,18 +120,6 @@ function chatFromSession(s: SessionRecord): ChatItem[] {
   }
 
   return items;
-}
-
-function roleStatusLabel(status: RoleStatus): string {
-  const map: Record<RoleStatus, string> = {
-    idle: '空闲',
-    running: '运行中',
-    waiting: '等待',
-    done: '完成',
-    blocked: '阻塞',
-    error: '错误',
-  };
-  return map[status];
 }
 
 function relativeTime(iso: string): string {
@@ -145,7 +138,7 @@ function statusBadge(status: string): { label: string; className: string } {
     completed: { label: '完成', className: 'ok' },
     error: { label: '错误', className: 'bad' },
     cancelled: { label: '取消', className: 'dim' },
-    max_rounds: { label: '超限', className: 'bad' },
+    max_rounds: { label: '达到轮次上限', className: 'warn' },
   };
   return map[status] ?? { label: status, className: 'dim' };
 }
@@ -199,14 +192,6 @@ function FileTreeNodeView({
   );
 }
 
-function RoleStatusDot({ status }: { status: RoleStatus }) {
-  if (status === 'running') return <span className="status-dot" style={{ background: 'var(--warn)' }} />;
-  if (status === 'done') return <span className="status-dot active" />;
-  if (status === 'blocked' || status === 'error') return <span className="status-dot error" />;
-  if (status === 'waiting') return <span className="status-dot" style={{ background: 'var(--accent)' }} />;
-  return <span className="status-dot idle" />;
-}
-
 export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     (localStorage.getItem('harness-theme') as 'light' | 'dark') || 'light',
@@ -218,10 +203,11 @@ export default function App() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
   const [fileViewerError, setFileViewerError] = useState<string | null>(null);
-  const [orchestrateTask, setOrchestrateTask] = useState('');
-  const [maxRetries, setMaxRetries] = useState(2);
+  const [maxRetries] = useState(2);
+  const [selectedRoles, setSelectedRoles] = useState<AgentRole[]>(['coder']);
   const [model, setModel] = useState(MODELS[0]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [sessionQuery, setSessionQuery] = useState('');
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
@@ -237,11 +223,30 @@ export default function App() {
   });
   const [panelHeights, setPanelHeights] = useState<number[]>([100]);
   const contextPanelRef = useRef<HTMLDivElement>(null);
+  const chatMessagesRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const resizeDragRef = useRef<{
     divider: number;
     startY: number;
     start: number[];
   } | null>(null);
+  const colDragRef = useRef<
+    | { kind: 'sidebar'; startX: number; startW: number }
+    | { kind: 'context'; startX: number; startW: number }
+    | null
+  >(null);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const n = Number(localStorage.getItem('harness-sidebar-w'));
+    return Number.isFinite(n) && n >= 200 && n <= 420 ? n : 240;
+  });
+  const [contextBodyWidth, setContextBodyWidth] = useState(() => {
+    const n = Number(localStorage.getItem('harness-context-w'));
+    return Number.isFinite(n) && n >= 200 && n <= 520 ? n : 300;
+  });
+  const sidebarWidthRef = useRef(sidebarWidth);
+  const contextBodyWidthRef = useRef(contextBodyWidth);
+  sidebarWidthRef.current = sidebarWidth;
+  contextBodyWidthRef.current = contextBodyWidth;
   const [projectsPanelOpen, setProjectsPanelOpen] = useState(false);
   const [projects, setProjects] = useState<SavedProject[]>(() => loadProjects());
   const [projectOpen, setProjectOpen] = useState(() => Boolean(localStorage.getItem('harness-workspace')));
@@ -349,34 +354,58 @@ export default function App() {
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      const drag = resizeDragRef.current;
+      const sectionDrag = resizeDragRef.current;
       const panel = contextPanelRef.current;
-      if (!drag || !panel) return;
-      const height = panel.getBoundingClientRect().height;
-      if (height <= 0) return;
-      const deltaPct = ((e.clientY - drag.startY) / height) * 100;
-      const next = [...drag.start];
-      const i = drag.divider;
-      let a = drag.start[i] + deltaPct;
-      let b = drag.start[i + 1] - deltaPct;
-      if (a < CONTEXT_SECTION_MIN) {
-        b -= CONTEXT_SECTION_MIN - a;
-        a = CONTEXT_SECTION_MIN;
+      if (sectionDrag && panel) {
+        const height = panel.getBoundingClientRect().height;
+        if (height > 0) {
+          const deltaPct = ((e.clientY - sectionDrag.startY) / height) * 100;
+          const next = [...sectionDrag.start];
+          const i = sectionDrag.divider;
+          let a = sectionDrag.start[i] + deltaPct;
+          let b = sectionDrag.start[i + 1] - deltaPct;
+          if (a < CONTEXT_SECTION_MIN) {
+            b -= CONTEXT_SECTION_MIN - a;
+            a = CONTEXT_SECTION_MIN;
+          }
+          if (b < CONTEXT_SECTION_MIN) {
+            a -= CONTEXT_SECTION_MIN - b;
+            b = CONTEXT_SECTION_MIN;
+          }
+          if (a >= CONTEXT_SECTION_MIN && b >= CONTEXT_SECTION_MIN) {
+            next[i] = a;
+            next[i + 1] = b;
+            setPanelHeights(next);
+          }
+        }
       }
-      if (b < CONTEXT_SECTION_MIN) {
-        a -= CONTEXT_SECTION_MIN - b;
-        b = CONTEXT_SECTION_MIN;
+
+      const colDrag = colDragRef.current;
+      if (colDrag?.kind === 'sidebar') {
+        const next = Math.min(420, Math.max(200, colDrag.startW + (e.clientX - colDrag.startX)));
+        setSidebarWidth(next);
+      } else if (colDrag?.kind === 'context') {
+        // Dragging the left edge of the right panel: moving left increases width.
+        const next = Math.min(520, Math.max(200, colDrag.startW + (colDrag.startX - e.clientX)));
+        setContextBodyWidth(next);
       }
-      if (a < CONTEXT_SECTION_MIN || b < CONTEXT_SECTION_MIN) return;
-      next[i] = a;
-      next[i + 1] = b;
-      setPanelHeights(next);
     };
     const onUp = () => {
-      if (!resizeDragRef.current) return;
-      resizeDragRef.current = null;
+      if (resizeDragRef.current) {
+        resizeDragRef.current = null;
+      }
+      if (colDragRef.current) {
+        const kind = colDragRef.current.kind;
+        colDragRef.current = null;
+        if (kind === 'sidebar') {
+          localStorage.setItem('harness-sidebar-w', String(sidebarWidthRef.current));
+        } else {
+          localStorage.setItem('harness-context-w', String(contextBodyWidthRef.current));
+        }
+      }
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      document.body.classList.remove('is-col-resizing');
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -384,6 +413,38 @@ export default function App() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
+  }, []);
+
+  const startSidebarResize = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    colDragRef.current = { kind: 'sidebar', startX: e.clientX, startW: sidebarWidth };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.body.classList.add('is-col-resizing');
+  }, [sidebarWidth]);
+
+  const startContextColResize = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    colDragRef.current = { kind: 'context', startX: e.clientX, startW: contextBodyWidth };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.body.classList.add('is-col-resizing');
+  }, [contextBodyWidth]);
+
+  const scrollChatToBottom = useCallback((force = false) => {
+    const el = chatMessagesRef.current;
+    if (!el) return;
+    if (!force && !stickToBottomRef.current) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, []);
+
+  const onChatScroll = useCallback(() => {
+    const el = chatMessagesRef.current;
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = dist < 80;
   }, []);
 
   const openContextOrder = CONTEXT_PANEL_ORDER.filter((key) => openContextPanels[key]);
@@ -426,7 +487,6 @@ export default function App() {
     checkpointFiles: checkpoint?.files,
   });
   const displayRoundCount = taskRounds.length;
-  const finalOutput = !busy ? extractFinalOutput(result, items) : '';
 
   useEffect(() => {
     if (!busy || taskRounds.length === 0) return;
@@ -436,9 +496,12 @@ export default function App() {
 
   useEffect(() => {
     if (!result) return;
-    // 任务结束：收缩所有轮次，只保留任务说明 + 说明摘要
     setExpandedRounds({});
   }, [result]);
+
+  useEffect(() => {
+    scrollChatToBottom();
+  }, [items.length, agentItems.length, rollbackMsg, busy, scrollChatToBottom]);
 
   useEffect(() => {
     setRollbackDone(false);
@@ -467,23 +530,124 @@ export default function App() {
   };
   const modifiedPaths = new Set(checkpoint?.files ?? []);
 
-  const completedCount = sessions.filter((s) => s.status === 'completed').length;
-  const errorCount = sessions.filter((s) => s.status === 'error' || s.status === 'max_rounds').length;
-  const totalRounds = sessions.reduce((n, s) => n + s.rounds, 0);
-
   const filteredSessions = sessions.filter((s) =>
     !sessionQuery.trim() || s.task.toLowerCase().includes(sessionQuery.trim().toLowerCase()),
   );
 
+  const toggleSessionRole = (role: AgentRole) => {
+    setSelectedRoles((prev) => {
+      if (prev.includes(role)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((r) => r !== role);
+      }
+      const order: AgentRole[] = ['coder', 'reviewer', 'tester'];
+      return order.filter((r) => r === role || prev.includes(r));
+    });
+  };
+
+  const roleTriggerLabel =
+    selectedRoles.length === 1
+      ? (ORCHESTRATOR_ROLES.find((a) => a.key === selectedRoles[0])?.name.replace(' Agent', '') ?? '角色')
+      : `${selectedRoles.length} 角色`;
+
+  const roleSelectControl = (
+    <div className="model-select role-select">
+      <button
+        type="button"
+        className="model-trigger"
+        onClick={() => {
+          setRoleMenuOpen((v) => !v);
+          setModelMenuOpen(false);
+        }}
+        disabled={busy}
+        title={`角色：${selectedRoles.join(', ')}（可多选）`}
+      >
+        <span className="model-trigger-label">{roleTriggerLabel}</span>
+        {' '}
+        <ChevronDown size={12} />
+      </button>
+      {roleMenuOpen && (
+        <ul className="model-menu role-menu">
+          {ORCHESTRATOR_ROLES.map((agent) => {
+            const on = selectedRoles.includes(agent.key);
+            return (
+              <li key={agent.key}>
+                <button
+                  type="button"
+                  className={on ? 'active' : ''}
+                  onClick={() => toggleSessionRole(agent.key)}
+                >
+                  <span className="role-menu-row">
+                    <span className="role-menu-check" aria-hidden>{on ? '✓' : ''}</span>
+                    <span>
+                      <span className="role-menu-name">{agent.name.replace(' Agent', '')}</span>
+                      <span className="role-menu-desc">{agent.desc}</span>
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+
+  const dispatchSessionTask = (text: string, sessionOpts?: { sessionId?: number }) => {
+    const roles = selectedRoles.length > 0 ? selectedRoles : (['coder'] as AgentRole[]);
+    if (roles.length === 1) {
+      sendTask(text, { ...sessionOpts, agentRole: roles[0] });
+    } else {
+      sendOrchestrate(text, { ...sessionOpts, roles, maxRetries });
+    }
+  };
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if ((task.trim() || attachedFiles.length > 0) && !busy) {
-      sendTask(task.trim(), activeSessionId != null ? { sessionId: activeSessionId } : undefined);
+      stickToBottomRef.current = true;
+      const text = task.trim();
+      const fromHome = page === 'dashboard';
+
+      if (fromHome) {
+        setActiveSessionId(null);
+        setActiveSessionTask(text || null);
+        seedChat([]);
+        clearCheckpoint();
+        clearResult();
+        clearOrchestratorStatus();
+        setSelectedFile(null);
+        setExpandedRounds({});
+        setRollbackDone(false);
+        setRollbackError(null);
+        dispatchSessionTask(text);
+      } else {
+        dispatchSessionTask(
+          text,
+          activeSessionId != null ? { sessionId: activeSessionId } : undefined,
+        );
+      }
+
       setTask('');
       setAttachedFiles([]);
       setPage('session');
       setRollbackMsg(null);
+      scrollChatToBottom(true);
     }
+  };
+
+  const openRoleSession = (role: AgentRole) => {
+    setSelectedRoles([role]);
+    setActiveSessionId(null);
+    setActiveSessionTask(null);
+    seedChat([]);
+    clearCheckpoint();
+    clearResult();
+    clearOrchestratorStatus();
+    setExpandedRounds({});
+    setRollbackDone(false);
+    setRollbackError(null);
+    setPage('session');
   };
 
   const handleSelectSession = async (id: number) => {
@@ -547,14 +711,6 @@ export default function App() {
       setFileViewerError('无法加载文件');
       setSelectedFile(null);
     }
-  };
-
-  const handleStartOrchestrate = () => {
-    const t = orchestrateTask.trim();
-    if (!t || busy || !connected) return;
-    sendOrchestrate(t, { maxRetries });
-    setOrchestrateTask('');
-    setPage('session');
   };
 
   const handleAttach = () => fileInputRef.current?.click();
@@ -636,11 +792,21 @@ export default function App() {
 
   const toggleTheme = () => setTheme((t) => (t === 'light' ? 'dark' : 'light'));
 
-  const NAV_ITEMS: Array<{ icon: LucideIcon; label: string; page: Page; closable?: boolean }> = [
-    { icon: LayoutDashboard, label: '仪表盘', page: 'dashboard', closable: true },
-    { icon: MessageSquare, label: '会话', page: 'session' },
-    { icon: Users, label: '多 Agent', page: 'project', closable: true },
-    { icon: Settings, label: '设置', page: 'settings', closable: true },
+  const openHome = () => {
+    setProjectsPanelOpen(false);
+    setPage('dashboard');
+  };
+
+  const openSessions = () => {
+    setProjectsPanelOpen(false);
+    goToRecentConversation();
+  };
+
+  const RAIL_ITEMS: Array<{ icon: LucideIcon; label: string; active: boolean; onClick: () => void }> = [
+    { icon: Home, label: 'Home', active: page === 'dashboard', onClick: openHome },
+    { icon: MessageSquare, label: '会话', active: page === 'session', onClick: openSessions },
+    { icon: Folder, label: '项目', active: page === 'project' || projectsPanelOpen, onClick: () => { setProjectsPanelOpen(false); setPage('project'); } },
+    { icon: Settings, label: '设置', active: page === 'settings', onClick: () => { setProjectsPanelOpen(false); setPage('settings'); } },
   ];
 
   return (
@@ -664,13 +830,63 @@ export default function App() {
         />
       )}
 
-      <div className={`app-body ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <aside className="app-rail" aria-label="主导航">
+        <div className="app-rail-logo" title="Coding Agent Harness">◆</div>
+        <nav className="app-rail-nav">
+          {RAIL_ITEMS.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className={`app-rail-btn ${item.active ? 'active' : ''}`}
+              onClick={item.onClick}
+            >
+              <item.icon size={20} strokeWidth={1.75} fill={item.active ? 'currentColor' : 'none'} />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="app-rail-foot">
+          <button
+            type="button"
+            className="app-rail-btn"
+            onClick={toggleTheme}
+            aria-label={theme === 'light' ? '切换到深色模式' : '切换到浅色模式'}
+          >
+            {theme === 'light' ? <Moon size={18} strokeWidth={1.75} /> : <Sun size={18} strokeWidth={1.75} />}
+            <span>{theme === 'light' ? '深色' : '浅色'}</span>
+          </button>
+        </div>
+      </aside>
+
+      <div className="app-canvas">
+        <div className="app-stage">
+      <div
+        className={`app-body ${page !== 'session' ? 'no-sidebar' : ''} ${page === 'session' && sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
+        style={
+          page === 'session'
+            ? {
+                gridTemplateColumns: sidebarCollapsed
+                  ? '56px minmax(0, 1fr)'
+                  : `${sidebarWidth}px minmax(0, 1fr)`,
+              }
+            : undefined
+        }
+      >
+        {page === 'session' && (
         <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+          {!sidebarCollapsed && (
+            <div
+              className="col-resize-handle sidebar-col-handle"
+              onMouseDown={startSidebarResize}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整左侧边栏宽度"
+            />
+          )}
           <div className="sidebar-header">
             {!sidebarCollapsed && (
               <div className="sidebar-logo">
-                <span className="logo-icon">◆</span>
-                <span>Agent Harness</span>
+                <span className="sidebar-logo-text">会话</span>
               </div>
             )}
             <div className="sidebar-header-actions">
@@ -678,21 +894,11 @@ export default function App() {
                 type="button"
                 className="theme-toggle"
                 onClick={() => setSidebarCollapsed((v) => !v)}
-                aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+                aria-label={sidebarCollapsed ? '展开会话列表' : '收起会话列表'}
                 title={sidebarCollapsed ? '展开' : '缩进'}
               >
                 {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
               </button>
-              {!sidebarCollapsed && (
-                <button
-                  type="button"
-                  className="theme-toggle"
-                  onClick={toggleTheme}
-                  aria-label={theme === 'light' ? '切换到深色模式' : '切换到浅色模式'}
-                >
-                  {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-                </button>
-              )}
             </div>
           </div>
 
@@ -702,122 +908,6 @@ export default function App() {
             <Plus size={16} />
             新建任务
           </button>
-
-          <nav className="sidebar-nav">
-            {NAV_ITEMS.map((item) => (
-              <div
-                key={item.label}
-                className={`nav-item-row ${page === item.page ? 'active' : ''}`}
-              >
-                <button
-                  type="button"
-                  className={`nav-item ${page === item.page ? 'active' : ''}`}
-                  onClick={() => {
-                    setProjectsPanelOpen(false);
-                    setPage(item.page);
-                  }}
-                >
-                  <item.icon size={18} />
-                  <span>{item.label}</span>
-                </button>
-                {item.closable && page === item.page && (
-                  <button
-                    type="button"
-                    className="nav-item-close"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      goToRecentConversation();
-                    }}
-                    aria-label={`关闭${item.label}`}
-                    title="关闭，回到最近对话"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-            ))}
-            <div className={`nav-item-row ${projectsPanelOpen ? 'active' : ''}`}>
-              <button
-                type="button"
-                className={`nav-item ${projectsPanelOpen ? 'active' : ''}`}
-                onClick={() => setProjectsPanelOpen(true)}
-                aria-expanded={projectsPanelOpen}
-              >
-                <Folder size={18} />
-                <span>我的项目</span>
-              </button>
-              {projectsPanelOpen && (
-                <button
-                  type="button"
-                  className="nav-item-close"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setProjectsPanelOpen(false);
-                  }}
-                  aria-label="关闭我的项目"
-                  title="关闭项目面板"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-          </nav>
-
-          {projectsPanelOpen && (
-            <div className="sidebar-projects-panel" role="region" aria-label="我的项目">
-              <div className="sidebar-panel-header">
-                <div className="sessions-header">
-                  <Folder size={12} />
-                  <span>我的项目</span>
-                </div>
-                <button
-                  type="button"
-                  className="nav-item-close"
-                  onClick={() => setProjectsPanelOpen(false)}
-                  aria-label="关闭我的项目"
-                  title="关闭"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-              <div className="project-actions-row">
-                <button type="button" className="header-btn" onClick={() => openFolderPicker('import')}>
-                  <FolderPlus size={12} />
-                  导入
-                </button>
-                <button type="button" className="header-btn" onClick={() => openFolderPicker('workspace')}>
-                  <FolderOpen size={12} />
-                  打开
-                </button>
-              </div>
-              {projects.length === 0 && (
-                <div className="sessions-empty">暂无项目，点击导入添加</div>
-              )}
-              <ul className="project-list">
-                {projects.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      className={`project-item ${projectOpen && workspacePath === p.path ? 'active' : ''}`}
-                      onClick={() => void handleOpenSavedProject(p)}
-                      title={p.path}
-                    >
-                      <span className="project-item-name">{p.name}</span>
-                      <span className="project-item-path">{p.path}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="session-delete"
-                      onClick={() => handleRemoveSavedProject(p.id)}
-                      aria-label={`移除项目：${p.name}`}
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
 
           <div className="sidebar-sessions">
             <div className="sessions-header">
@@ -862,7 +952,6 @@ export default function App() {
                       <span className="session-task">{s.task}</span>
                       <span className="session-meta">
                         <span className={`badge ${badge.className}`}>{badge.label}</span>
-                        <span>{s.rounds} 轮</span>
                         <span className="session-time">{relativeTime(s.created_at)}</span>
                       </span>
                     </button>
@@ -889,106 +978,89 @@ export default function App() {
           </div>
             </>
           )}
-          {sidebarCollapsed && (
-            <nav className="sidebar-nav collapsed-nav">
-              {NAV_ITEMS.map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  className={`nav-item icon-only ${page === item.page ? 'active' : ''}`}
-                  onClick={() => {
-                    setProjectsPanelOpen(false);
-                    setPage(item.page);
-                  }}
-                  title={item.label}
-                >
-                  <item.icon size={18} />
-                </button>
-              ))}
-              <button
-                type="button"
-                className={`nav-item icon-only ${projectsPanelOpen ? 'active' : ''}`}
-                onClick={() => {
-                  setSidebarCollapsed(false);
-                  setProjectsPanelOpen(true);
-                }}
-                title="我的项目"
-              >
-                <Folder size={18} />
-              </button>
-            </nav>
-          )}
         </aside>
+        )}
 
         <main className="main-area">
           {page === 'dashboard' && (
-            <div className="page-dashboard">
-              <div className="dashboard-header">
-                <div className="dashboard-header-main">
-                  <h1 className="dashboard-title">仪表盘</h1>
-                  <p className="dashboard-subtitle">基于真实会话数据的工作负载概览</p>
-                </div>
-                <button
-                  type="button"
-                  className="header-btn page-close-btn"
-                  onClick={goToRecentConversation}
-                  title="关闭，回到最近对话"
-                  aria-label="关闭仪表盘"
+            <div className="page-home">
+              <div className="home-ask">
+                <h1 className="home-greet">想做什么？</h1>
+                <form
+                  className={`composer ${dragOver ? 'drag-over' : ''} ${composerFocused ? 'expanded' : ''}`}
+                  onSubmit={handleSubmit}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onFocusCapture={() => setComposerFocused(true)}
+                  onBlurCapture={(e) => {
+                    const next = e.relatedTarget as Node | null;
+                    if (!e.currentTarget.contains(next)) setComposerFocused(false);
+                  }}
                 >
-                  <X size={14} />
-                  关闭
-                </button>
-              </div>
-
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <div className="stat-label">会话总数</div>
-                  <div className="stat-value">{sessions.length}</div>
-                  <div className="stat-change up">来自 SQLite</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">完成任务</div>
-                  <div className="stat-value">{completedCount}</div>
-                  <div className="stat-change up">
-                    {sessions.length ? `${Math.round((completedCount / sessions.length) * 100)}%` : '0%'} 完成率
+                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleFiles} />
+                  <button type="button" className="composer-icon" onClick={handleAttach} disabled={busy}>
+                    <Paperclip size={18} />
+                  </button>
+                  <div className="prompt-wrap">
+                    <textarea
+                      value={task}
+                      onChange={(e) => setTask(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="描述一项具体编码任务（目标、约束、验收标准）…"
+                      disabled={busy}
+                      rows={2}
+                    />
                   </div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">失败 / 超限</div>
-                  <div className="stat-value">{errorCount}</div>
-                  <div className={`stat-change ${errorCount ? 'down' : 'up'}`}>
-                    {errorCount ? '需关注' : '状态良好'}
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">累计轮次</div>
-                  <div className="stat-value">{totalRounds}</div>
-                  <div className="stat-change up">任务轮次 {displayRoundCount} · 工具 {toolCallCount}</div>
-                </div>
-              </div>
-
-              <h2 className="section-title">最近会话</h2>
-              <div className="projects-grid">
-                {sessions.slice(0, 6).map((s) => {
-                  const badge = statusBadge(s.status);
-                  return (
-                    <div key={s.id} className="project-card" onClick={() => void handleSelectSession(s.id)}>
-                      <div className="project-icon blue"><Zap size={20} /></div>
-                      <div className="project-name">{s.task}</div>
-                      <div className="project-desc">{s.rounds} 轮 · {relativeTime(s.created_at)}</div>
-                      <div className="project-meta">
-                        <span className={`badge ${badge.className}`}>{badge.label}</span>
-                      </div>
+                  <div className="composer-actions">
+                    {roleSelectControl}
+                    <div className="model-select">
+                      <button
+                        type="button"
+                        className="model-trigger"
+                        onClick={() => {
+                          setModelMenuOpen((v) => !v);
+                          setRoleMenuOpen(false);
+                        }}
+                        disabled={busy}
+                        title={model}
+                      >
+                        <span className="model-trigger-label">{model}</span> <ChevronDown size={12} />
+                      </button>
+                      {modelMenuOpen && (
+                        <ul className="model-menu">
+                          {MODELS.map((m) => (
+                            <li key={m}>
+                              <button type="button" onClick={() => { setModel(m); setModelMenuOpen(false); }}>{m}</button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                  );
-                })}
-                {sessions.length === 0 && (
-                  <div className="project-card" onClick={handleNewSession}>
-                    <div className="project-icon purple"><Plus size={20} /></div>
-                    <div className="project-name">还没有会话</div>
-                    <div className="project-desc">点击新建任务，开始第一次 Agent 运行</div>
+                    <button
+                      type="submit"
+                      className="send-btn"
+                      disabled={busy || !connected || (!task.trim() && attachedFiles.length === 0)}
+                    >
+                      <Send size={16} />
+                    </button>
+                    {busy && (
+                      <button type="button" className="header-btn" onClick={cancel}>取消</button>
+                    )}
                   </div>
-                )}
+                </form>
+                <div className="home-chips">
+                  {PROMPT_CHIPS.map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      className="home-chip"
+                      onClick={() => setTask(chip)}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -998,14 +1070,17 @@ export default function App() {
               <div className="session-header">
                 <div className="session-header-left">
                   <h2 className="session-title">{activeSessionTask ?? '新会话'}</h2>
-                  {activeSessionId != null && (
-                    <span className="session-resume-badge">续跑 · #{activeSessionId}</span>
+                  <div className="session-role-summary">
+                    {selectedRoles.map((r) => (
+                      <span key={r} className="session-role-tag">{r}</span>
+                    ))}
+                  </div>
+                  {status === 'running' && (
+                    <span className="session-status running">
+                      运行中
+                      {orchestratorStatus ? ` · ${orchestratorStatus.phase}` : ''}
+                    </span>
                   )}
-                  <span className={`session-status ${status}`}>
-                    {status === 'running'
-                      ? `运行中 · 第 ${displayRoundCount || 1} 轮`
-                      : status}
-                  </span>
                 </div>
                 <div className="session-header-right">
                   <button type="button" className="header-btn" onClick={handleNewSession}>
@@ -1017,7 +1092,7 @@ export default function App() {
 
               <div className="session-content">
                 <div className="chat-panel">
-                  <div className="chat-messages">
+                  <div className="chat-messages" ref={chatMessagesRef} onScroll={onChatScroll}>
                     <TaskRoundList
                       rounds={taskRounds}
                       expanded={expandedRounds}
@@ -1027,10 +1102,8 @@ export default function App() {
                       rollbackBusy={rollbackBusy}
                       rollbackDone={rollbackDone}
                       rollbackError={rollbackError}
+                      feedbackHistory={result?.feedbackHistory}
                     />
-                    {finalOutput && (
-                      <FinalResultCard content={finalOutput} status={result?.status} />
-                    )}
                     {rollbackMsg && (
                       <div className="message agent">
                         <div className="message-bubble">{rollbackMsg}</div>
@@ -1070,18 +1143,32 @@ export default function App() {
                           value={task}
                           onChange={(e) => setTask(e.target.value)}
                           onKeyDown={handleKeyDown}
-                          placeholder={activeSessionId != null ? '继续输入以接着干…' : '输入编码任务…'}
+                          placeholder={
+                            activeSessionId != null
+                              ? '补充要求、指出问题，或给出下一步验收标准…'
+                              : '描述一项具体编码任务（目标、约束、验收标准）…'
+                          }
                           disabled={busy}
                           rows={1}
                         />
                       </div>
-                      <button type="button" className="composer-icon" disabled={busy} title="语音输入（待接入）">
+                      <button type="button" className="composer-icon composer-mic" disabled={busy} title="语音输入（待接入）">
                         <Mic size={18} />
                       </button>
                       <div className="composer-actions">
+                        {roleSelectControl}
                         <div className="model-select">
-                          <button type="button" className="model-trigger" onClick={() => setModelMenuOpen((v) => !v)} disabled={busy}>
-                            {model} <ChevronDown size={12} />
+                          <button
+                            type="button"
+                            className="model-trigger"
+                            onClick={() => {
+                              setModelMenuOpen((v) => !v);
+                              setRoleMenuOpen(false);
+                            }}
+                            disabled={busy}
+                            title={model}
+                          >
+                            <span className="model-trigger-label">{model}</span> <ChevronDown size={12} />
                           </button>
                           {modelMenuOpen && (
                             <ul className="model-menu">
@@ -1108,7 +1195,23 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className={`context-panel ${openContextOrder.length === 0 ? 'rail-only' : ''}`}>
+                <div
+                  className={`context-panel ${openContextOrder.length === 0 ? 'rail-only' : ''}`}
+                  style={
+                    openContextOrder.length > 0
+                      ? { width: 48 + contextBodyWidth, maxWidth: 'none' }
+                      : undefined
+                  }
+                >
+                  {openContextOrder.length > 0 && (
+                    <div
+                      className="col-resize-handle context-col-handle"
+                      onMouseDown={startContextColResize}
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label="调整右侧面板宽度"
+                    />
+                  )}
                   <aside className="context-icon-rail" aria-label="工作区面板">
                     {CONTEXT_DOCK_ITEMS.map((item) => {
                       const Icon = item.icon;
@@ -1133,7 +1236,11 @@ export default function App() {
                   </aside>
 
                   {openContextOrder.length > 0 && (
-                    <div className="context-panel-body" ref={contextPanelRef}>
+                    <div
+                      className="context-panel-body"
+                      ref={contextPanelRef}
+                      style={{ width: contextBodyWidth, flex: `0 0 ${contextBodyWidth}px` }}
+                    >
                       {openContextOrder.map((key, index) => {
                         const meta = CONTEXT_DOCK_ITEMS.find((item) => item.key === key)!;
                         const TitleIcon = meta.icon;
@@ -1285,91 +1392,89 @@ export default function App() {
           {page === 'project' && (
             <div className="page-project">
               <div className="project-header">
-                <h1 className="project-title">Coding Agent Harness</h1>
+                <h1 className="project-title">项目与工作区</h1>
                 <div className="project-actions">
-                  <button
-                    type="button"
-                    className="header-btn page-close-btn"
-                    onClick={goToRecentConversation}
-                    title="关闭，回到最近对话"
-                    aria-label="关闭多 Agent"
-                  >
-                    <X size={14} />
-                    关闭
+                  <button type="button" className="header-btn" onClick={() => openFolderPicker('import')}>
+                    <FolderPlus size={14} />
+                    导入
                   </button>
-                  <button type="button" className="header-btn" onClick={() => setPage('settings')}>
-                    <Settings size={14} />
-                    配置
-                  </button>
-                  <button type="button" className="header-btn" onClick={handleNewSession}>
-                    <Plus size={14} />
-                    新会话
+                  <button type="button" className="header-btn" onClick={() => openFolderPicker('workspace')}>
+                    <FolderOpen size={14} />
+                    打开
                   </button>
                 </div>
               </div>
 
-              <div className="orchestrate-form">
-                <textarea
-                  value={orchestrateTask}
-                  onChange={(e) => setOrchestrateTask(e.target.value)}
-                  placeholder="输入编排任务…"
-                  rows={2}
-                  disabled={busy}
-                />
-                <div className="orchestrate-controls">
-                  <label className="orchestrate-retries">
-                    最大重试
-                    <input
-                      type="number"
-                      min={0}
-                      max={10}
-                      value={maxRetries}
-                      onChange={(e) => setMaxRetries(Math.max(0, Number(e.target.value) || 0))}
-                      disabled={busy}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="orchestrate-start"
-                    onClick={handleStartOrchestrate}
-                    disabled={busy || !connected || !orchestrateTask.trim()}
-                  >
-                    <Send size={14} />
-                    启动编排
-                  </button>
-                </div>
-                {orchestratorStatus && (
-                  <div className="orchestrator-meta">
-                    <span>阶段：{orchestratorStatus.phase}</span>
-                    <span>重试 {orchestratorStatus.retryCount}/{orchestratorStatus.maxRetries}</span>
-                    {orchestratorStatus.lastGate && (
-                      <span className="orchestrator-gate">
-                        门禁：{orchestratorStatus.lastGate.from} — {orchestratorStatus.lastGate.reason}
-                      </span>
-                    )}
+              <div className="form-split workspace-card">
+                <div>
+                  <div className="stat-label">当前工作区</div>
+                  <p className="project-desc">{projectOpen ? (workspacePath || '未选择') : '尚未打开项目'}</p>
+                  <div className="project-actions-row" style={{ marginTop: 12 }}>
+                    <button type="button" className="header-btn" onClick={() => openFolderPicker('workspace')}>
+                      <FolderOpen size={12} />
+                      绑定文件夹
+                    </button>
+                    <button type="button" className="header-btn" onClick={() => void handleCloseProject()} disabled={!projectOpen}>
+                      <FolderX size={12} />
+                      解除
+                    </button>
                   </div>
-                )}
+                  <div className="sessions-header" style={{ marginTop: 20 }}>
+                    <Folder size={12} />
+                    <span>最近项目</span>
+                  </div>
+                  {projects.length === 0 && (
+                    <div className="sessions-empty">暂无项目，点击导入添加</div>
+                  )}
+                  <ul className="project-list">
+                    {projects.map((p) => (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          className={`project-item ${projectOpen && workspacePath === p.path ? 'active' : ''}`}
+                          onClick={() => void handleOpenSavedProject(p)}
+                          title={p.path}
+                        >
+                          <span className="project-item-name">{p.name}</span>
+                          <span className="project-item-path">{p.path}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="session-delete"
+                          onClick={() => handleRemoveSavedProject(p.id)}
+                          aria-label={`移除项目：${p.name}`}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="form-split-help">
+                  工具只在工作区内执行。绑定本地文件夹后，Agent 的读写、搜索和测试都会限制在该目录。
+                </p>
               </div>
 
               <div className="agents-grid">
-                {ORCHESTRATOR_ROLES.map((agent) => {
-                  const roleStatus = orchestratorStatus?.roles[agent.key] ?? 'idle';
-                  return (
-                    <div key={agent.key} className={`agent-card role-${roleStatus}`}>
-                      <div className="agent-header">
-                        <div className={`agent-avatar ${agent.avatar}`}>{agent.name[0]}</div>
-                        <div className="agent-info">
-                          <div className="agent-name">{agent.name}</div>
-                          <div className="agent-role">{agent.desc}</div>
-                        </div>
-                        <div className={`agent-status role-${roleStatus}`}>
-                          <RoleStatusDot status={roleStatus} />
-                          {roleStatusLabel(roleStatus)}
-                        </div>
+                {ORCHESTRATOR_ROLES.map((agent) => (
+                  <button
+                    key={agent.key}
+                    type="button"
+                    className="agent-card agent-card-button"
+                    onClick={() => openRoleSession(agent.key)}
+                  >
+                    <div className="agent-header">
+                      <div className={`agent-avatar ${agent.avatar}`}>{agent.name[0]}</div>
+                      <div className="agent-info">
+                        <div className="agent-name">{agent.name}</div>
+                        <div className="agent-role">{agent.desc}</div>
+                      </div>
+                      <div className="agent-status">
+                        进入会话
                       </div>
                     </div>
-                  );
-                })}
+                  </button>
+                ))}
               </div>
 
               <h2 className="section-title">真实会话活动</h2>
@@ -1377,13 +1482,18 @@ export default function App() {
                 {sessions.slice(0, 8).map((s) => {
                   const badge = statusBadge(s.status);
                   return (
-                    <div key={s.id} className="activity-item">
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="activity-item"
+                      onClick={() => void handleSelectSession(s.id)}
+                    >
                       <div className={`activity-icon ${badge.className === 'ok' ? 'green' : 'blue'}`}>◆</div>
                       <div className="activity-content">
                         <div className="activity-text">{s.task}</div>
-                        <div className="activity-time">{badge.label} · {s.rounds} 轮 · {relativeTime(s.created_at)}</div>
+                        <div className="activity-time">{badge.label} · {relativeTime(s.created_at)}</div>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
                 {sessions.length === 0 && (
@@ -1398,18 +1508,8 @@ export default function App() {
               <div className="dashboard-header">
                 <div className="dashboard-header-main">
                   <h1 className="dashboard-title">设置</h1>
-                  <p className="dashboard-subtitle">主题、连接状态与运行环境</p>
+                  <p className="dashboard-subtitle">主题、连接状态、模型与凭据</p>
                 </div>
-                <button
-                  type="button"
-                  className="header-btn page-close-btn"
-                  onClick={goToRecentConversation}
-                  title="关闭，回到最近对话"
-                  aria-label="关闭设置"
-                >
-                  <X size={14} />
-                  关闭
-                </button>
               </div>
 
               <div className="settings-grid">
@@ -1457,7 +1557,8 @@ export default function App() {
                     <button type="button" className="header-btn" onClick={() => void refresh()}>刷新</button>
                   </div>
                 </div>
-                <div className="stat-card">
+                <div className="stat-card credential-gate" style={{ gridColumn: '1 / -1' }}>
+                  <div>
                   <div className="stat-label">API 密钥</div>
                   <div className="settings-row">
                     <span>
@@ -1571,11 +1672,18 @@ export default function App() {
                       存储方式: {navigator.platform?.includes('Win') ? 'Windows Credential Manager' : 'AES 加密文件'}
                     </span>
                   </div>
+                  </div>
+                  <aside className="credential-gate-aside">
+                    <strong>凭据安全存储</strong>
+                    API Key 加密保存，关闭浏览器后无需重复输入。密钥不会写入仓库或出现在对话记录里。
+                  </aside>
                 </div>
               </div>
             </div>
           )}
         </main>
+      </div>
+        </div>
       </div>
     </div>
   );

@@ -15,11 +15,32 @@ export interface WSMessage {
   payload: unknown;
 }
 
+export type FailureType = 'compile' | 'assertion' | 'timeout' | 'runtime';
+
+export interface FeedbackFailureSummary {
+  testName: string;
+  type: FailureType;
+  file: string;
+  line: number;
+  expected: string;
+  received: string;
+}
+
+export interface FeedbackHistoryEntry {
+  round: number;
+  status: string;
+  summary?: string;
+  failureTypes?: FailureType[];
+  failures?: FeedbackFailureSummary[];
+  repeatedFailure?: { testName: string; streak: number; message: string };
+}
+
 export interface RoundProgress {
   round: number;
   assistantContent: string;
   actions: Array<{ tool: string; result: string }>;
   feedbackStatus?: string;
+  feedback?: FeedbackHistoryEntry;
   agentRole?: string;
 }
 
@@ -31,6 +52,7 @@ export interface ChatItem {
   round?: number;
   actions?: Array<{ tool: string; result: string }>;
   feedbackStatus?: string;
+  feedback?: FeedbackHistoryEntry;
   agentRole?: string;
 }
 
@@ -50,7 +72,7 @@ export interface AgentResult {
   status: string;
   rounds: number;
   messages: Array<{ role: string; content: string; tool_calls?: unknown[] }>;
-  feedbackHistory: Array<{ round: number; status: string }>;
+  feedbackHistory: FeedbackHistoryEntry[];
   checkpoint?: CheckpointDiffPayload | null;
   sessionId?: number;
 }
@@ -80,7 +102,7 @@ export interface SessionSummary {
 
 export interface SessionData {
   progressEvents: RoundProgress[];
-  feedbackHistory: Array<{ round: number; status: string }>;
+  feedbackHistory: FeedbackHistoryEntry[];
   messages: Array<{ role: string; content: string }>;
 }
 

@@ -62,7 +62,7 @@ export class Orchestrator {
 
   async run(
     task: string,
-    options?: { priorMessages?: Message[] },
+    options?: { priorMessages?: Message[]; roles?: AgentRole[] },
   ): Promise<OrchestrationResult> {
     this.cancelled = false;
     const stages: StageArtifact[] = [];
@@ -71,6 +71,12 @@ export class Orchestrator {
     let retries = 0;
     let retryCount = 0;
     const getChangedFiles = this.deps.getChangedFiles ?? (() => []);
+    const roleOrder: AgentRole[] = (options?.roles?.length
+      ? ROLE_ORDER.filter((r) => options.roles!.includes(r))
+      : ROLE_ORDER);
+    if (roleOrder.length === 0) {
+      return { status: 'failed', stages, retries, messages, progressEvents };
+    }
 
     const emitStatus = (partial: Partial<OrchestratorStatus> & { phase: string }) => {
       this.deps.onStatus?.({
@@ -90,7 +96,7 @@ export class Orchestrator {
 
       let pipelineComplete = true;
 
-      for (const role of ROLE_ORDER) {
+      for (const role of roleOrder) {
         if (this.cancelled) {
           return { status: 'cancelled', stages, retries, messages, progressEvents };
         }
@@ -105,7 +111,7 @@ export class Orchestrator {
 
         this.currentLoop = this.deps.createLoop(role, onProgress);
         const coderTask =
-          role === 'coder'
+          role === roleOrder[0]
             ? `${task}\n\n${ARTIFACT_INSTRUCTION}`
             : `Continue the pipeline for: ${task}\n\n${ARTIFACT_INSTRUCTION}`;
 
@@ -139,6 +145,11 @@ export class Orchestrator {
           const rolesAfter = idleRoles();
           rolesAfter[role] = 'blocked';
 
+          if (gate.action === 'retry_coder' && !roleOrder.includes('coder')) {
+            emitStatus({ phase: 'failed', roles: rolesAfter, lastGate: { from: role, reason: gate.reason } });
+            return { status: 'failed', stages, retries, messages, progressEvents };
+          }
+
           if (retryCount >= this.deps.maxRetries) {
             emitStatus({ phase: 'failed', roles: rolesAfter, lastGate: { from: role, reason: gate.reason } });
             return { status: 'failed', stages, retries, messages, progressEvents };
@@ -166,16 +177,18 @@ export class Orchestrator {
         }
 
         const rolesDone = idleRoles();
-        for (const r of ROLE_ORDER) {
+        for (const r of roleOrder) {
           rolesDone[r] = stages.some((s) => s.role === r) ? 'done' : r === role ? 'done' : 'idle';
         }
         emitStatus({ phase: phaseForRole(role), roles: rolesDone });
       }
 
       if (pipelineComplete) {
+        const completedRoles = idleRoles();
+        for (const r of roleOrder) completedRoles[r] = 'done';
         emitStatus({
           phase: 'completed',
-          roles: { coder: 'done', reviewer: 'done', tester: 'done' },
+          roles: completedRoles,
         });
         return { status: 'completed', stages, retries, messages, progressEvents };
       }

@@ -7,6 +7,7 @@ import type {
   ChatItem,
   CheckpointDiffPayload,
   OrchestratorStatus,
+  AgentRole,
 } from '../types';
 
 export function useWebSocket(url: string) {
@@ -75,6 +76,7 @@ export function useWebSocket(url: string) {
               text: p.assistantContent,
               actions: p.actions,
               feedbackStatus: p.feedbackStatus,
+              ...(p.feedback ? { feedback: p.feedback } : {}),
               ...(p.agentRole ? { agentRole: p.agentRole } : {}),
             },
           ]);
@@ -105,9 +107,10 @@ export function useWebSocket(url: string) {
     idRef.current = items.length;
   }, []);
 
-  const sendTask = useCallback((task: string, opts?: { sessionId?: number }) => {
-    const payload: { task: string; sessionId?: number } = { task };
+  const sendTask = useCallback((task: string, opts?: { sessionId?: number; agentRole?: AgentRole }) => {
+    const payload: { task: string; sessionId?: number; agentRole?: AgentRole } = { task };
     if (opts?.sessionId != null) payload.sessionId = opts.sessionId;
+    if (opts?.agentRole) payload.agentRole = opts.agentRole;
     const msg = JSON.stringify({ type: 'task', payload });
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(msg);
@@ -128,10 +131,11 @@ export function useWebSocket(url: string) {
   }, []);
 
   const sendOrchestrate = useCallback(
-    (task: string, opts?: { maxRetries?: number; sessionId?: number }) => {
-      const payload: { task: string; maxRetries?: number; sessionId?: number } = { task };
+    (task: string, opts?: { maxRetries?: number; sessionId?: number; roles?: AgentRole[] }) => {
+      const payload: { task: string; maxRetries?: number; sessionId?: number; roles?: AgentRole[] } = { task };
       if (opts?.maxRetries != null) payload.maxRetries = opts.maxRetries;
       if (opts?.sessionId != null) payload.sessionId = opts.sessionId;
+      if (opts?.roles?.length) payload.roles = opts.roles;
       const msg = JSON.stringify({ type: 'orchestrate', payload });
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(msg);

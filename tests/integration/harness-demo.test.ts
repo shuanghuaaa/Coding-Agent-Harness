@@ -141,11 +141,81 @@ describe('Harness Demo (★ core mechanism)', () => {
     expect(result.feedbackHistory.length).toBe(2);
     expect(result.feedbackHistory[0].status).toBe('fail');
     expect(result.feedbackHistory[1].status).toBe('pass');
+    expect(result.feedbackHistory[0].failureTypes?.length).toBeGreaterThan(0);
+    expect(result.feedbackHistory.some((h) => h.status === 'fail')).toBe(true);
+    expect(result.feedbackHistory.some((h) => h.status === 'pass')).toBe(true);
 
     const hasFailureFeedback = result.messages.some(
-      (m) => m.role === 'system' && m.content.includes('Tests failed')
+      (m) => m.role === 'system' && (m.content.includes('[FAIL]') || m.content.includes('test(s) failed'))
     );
     expect(hasFailureFeedback).toBe(true);
+  });
+
+  it('②b Repeated failure WARNING then pass', async () => {
+    const mockLLM = new MockLLM([
+      {
+        content: null,
+        tool_calls: [{ id: 'c1', name: 'run_test', arguments: { command: 'npm test' } }],
+        finish_reason: 'tool_calls',
+      },
+      {
+        content: null,
+        tool_calls: [{ id: 'c2', name: 'run_test', arguments: { command: 'npm test' } }],
+        finish_reason: 'tool_calls',
+      },
+      {
+        content: null,
+        tool_calls: [{ id: 'c3', name: 'run_test', arguments: { command: 'npm test' } }],
+        finish_reason: 'tool_calls',
+      },
+      {
+        content: 'Done.',
+        tool_calls: [],
+        finish_reason: 'stop',
+      },
+    ]);
+
+    let testCallCount = 0;
+    const failLine = 'FAIL: add(1, 2) expected 3, got -1 at src/math.ts:3:12';
+    const testTool: Tool = {
+      name: 'run_test',
+      description: 'Run tests',
+      parameters: {
+        type: 'object',
+        properties: { command: { type: 'string' } },
+        required: ['command'],
+      },
+      execute: async () => {
+        testCallCount += 1;
+        if (testCallCount <= 2) {
+          return { tool_call_id: '', content: failLine, error: 'Tests failed' };
+        }
+        return { tool_call_id: '', content: 'Tests: 3 passed, 3 total' };
+      },
+    };
+
+    const loop = new AgentLoop({
+      llm: mockLLM,
+      dispatcher: new ToolDispatcher([testTool]),
+      contextBuilder: new ContextBuilder({
+        systemPrompt: 'You are a coding agent.',
+        configRules: [],
+        memoryEntries: [],
+      }),
+      stopCondition: new StopCondition({ maxRounds: 10 }),
+      validator: new FeedbackValidator(),
+      injector: new FeedbackInjector(),
+    });
+
+    const result = await loop.run('Fix add');
+    expect(result.feedbackHistory.length).toBe(3);
+    expect(result.feedbackHistory[0].repeatedFailure).toBeUndefined();
+    expect(result.feedbackHistory[1].repeatedFailure?.streak).toBe(2);
+    expect(result.feedbackHistory[2].status).toBe('pass');
+    const warned = result.messages.some(
+      (m) => m.role === 'system' && m.content.includes('WARNING:')
+    );
+    expect(warned).toBe(true);
   });
 
   it('③ Feedback loop is deterministic with mock LLM', async () => {

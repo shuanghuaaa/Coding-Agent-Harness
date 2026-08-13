@@ -12,8 +12,11 @@ export class FeedbackInjector {
       '',
       ...feedback.failures.map(
         (f) =>
-          `  - ${f.testName}: expected ${f.expected}, got ${f.received} [${f.file}:${f.line}]`
+          `  - ${f.testName}: expected ${f.expected}, got ${f.received} [${f.type}] [${f.file}:${f.line}]`
       ),
+      ...(feedback.repeatedFailure
+        ? ['', `WARNING: ${feedback.repeatedFailure.message}`]
+        : []),
       '',
       'Please analyze the failures and fix the code. Run the tests again after making changes.',
     ];

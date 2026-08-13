@@ -28,6 +28,32 @@ describe('FeedbackInjector', () => {
     expect(message).toContain('expected 3');
     expect(message).toContain('got -1');
     expect(message).toContain('src/math.ts:3');
+    expect(message).toContain('[assertion]');
+  });
+
+  it('includes WARNING when repeatedFailure is set', () => {
+    const feedback: Feedback = {
+      status: 'fail',
+      round: 3,
+      summary: '1 test failed',
+      failures: [{
+        testName: 'add',
+        expected: '3',
+        received: '-1',
+        file: 't.ts',
+        line: 1,
+        type: 'assertion',
+        raw: '',
+      }],
+      repeatedFailure: {
+        testName: 'add',
+        streak: 3,
+        message: '"add" failed 3 times in a row. Try a different fix.',
+      },
+    };
+    const message = injector.buildMessage(feedback);
+    expect(message).toContain('WARNING:');
+    expect(message).toContain('3 times');
   });
 
   it('builds pass feedback message', () => {

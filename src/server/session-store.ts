@@ -1,10 +1,11 @@
 import Database from 'better-sqlite3';
 import type { RoundProgress } from '../agent/loop';
+import type { FeedbackHistoryEntry } from '../feedback/types';
 import type { Message } from '../agent/types';
 
 export interface SessionData {
   progressEvents: RoundProgress[];
-  feedbackHistory: Array<{ round: number; status: string }>;
+  feedbackHistory: FeedbackHistoryEntry[];
   messages: Message[];
 }
 

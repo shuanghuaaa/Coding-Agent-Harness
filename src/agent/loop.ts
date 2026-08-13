@@ -4,6 +4,9 @@ import type { ContextBuilder } from './context-builder';
 import type { StopCondition } from './stop-condition';
 import type { FeedbackValidator } from '../feedback/validator';
 import type { FeedbackInjector } from '../feedback/injector';
+import type { FeedbackHistoryEntry } from '../feedback/types';
+import { detectRepeatedFailure } from '../feedback/repeated-failure';
+import { toFeedbackHistoryEntry } from '../feedback/summary';
 import { guardrail } from '../guard/guardrail';
 import type { Message } from './types';
 
@@ -28,6 +31,7 @@ export interface RoundProgress {
   assistantContent: string;
   actions: Array<{ tool: string; result: string }>;
   feedbackStatus?: string;
+  feedback?: FeedbackHistoryEntry;
   agentRole?: string;
 }
 
@@ -54,12 +58,12 @@ export interface RunResult {
   status: 'completed' | 'max_rounds' | 'error' | 'cancelled';
   rounds: number;
   messages: Message[];
-  feedbackHistory: Array<{ round: number; status: string }>;
+  feedbackHistory: FeedbackHistoryEntry[];
 }
 
 export class AgentLoop {
   private messages: Message[] = [];
-  private feedbackHistory: Array<{ round: number; status: string }> = [];
+  private feedbackHistory: FeedbackHistoryEntry[] = [];
   private cancelled = false;
   private currentAgentRole?: string;
   private feedbackToolNames: string[];
@@ -120,6 +124,7 @@ export class AgentLoop {
 
       const actions: Array<{ tool: string; result: string }> = [];
       let roundFeedback: string | undefined;
+      let roundFeedbackEntry: FeedbackHistoryEntry | undefined;
 
       for (const toolCall of response.tool_calls) {
         const guardResult = guardrail(toolCall.name, toolCall.arguments);
@@ -139,6 +144,7 @@ export class AgentLoop {
               const executed = await this.executeToolCall(toolCall.id, toolCall.name, args, round);
               actions.push({ tool: toolCall.name, result: executed.content });
               if (executed.feedbackStatus) roundFeedback = executed.feedbackStatus;
+              if (executed.feedback) roundFeedbackEntry = executed.feedback;
             } else {
               const blocked = `BLOCKED (user rejected): ${guardResult.reason}`;
               this.messages.push({
@@ -168,9 +174,10 @@ export class AgentLoop {
         );
         actions.push({ tool: toolCall.name, result: executed.content });
         if (executed.feedbackStatus) roundFeedback = executed.feedbackStatus;
+        if (executed.feedback) roundFeedbackEntry = executed.feedback;
       }
 
-      this.emitProgress(round, response.content ?? '', actions, roundFeedback);
+      this.emitProgress(round, response.content ?? '', actions, roundFeedback, roundFeedbackEntry);
 
       if (this.cancelled) {
         return {
@@ -195,12 +202,14 @@ export class AgentLoop {
     assistantContent: string,
     actions: Array<{ tool: string; result: string }>,
     feedbackStatus?: string,
+    feedback?: FeedbackHistoryEntry,
   ): void {
     this.config.onProgress?.({
       round,
       assistantContent,
       actions,
       feedbackStatus,
+      feedback,
       agentRole: this.currentAgentRole,
     });
   }
@@ -210,7 +219,7 @@ export class AgentLoop {
     name: string,
     args: Record<string, unknown>,
     round: number,
-  ): Promise<{ content: string; feedbackStatus?: string }> {
+  ): Promise<{ content: string; feedbackStatus?: string; feedback?: FeedbackHistoryEntry }> {
     const result = await this.config.dispatcher.dispatch(name, args);
     const content = result.error
       ? `${result.content}\n${result.error}`.trim()
@@ -222,20 +231,20 @@ export class AgentLoop {
     });
 
     let feedbackStatus: string | undefined;
+    let feedbackEntry: FeedbackHistoryEntry | undefined;
     if (this.feedbackToolNames.includes(name)) {
-      const feedback = this.config.validator.validate(
+      let feedback = this.config.validator.validate(
         result.content,
         round,
         result.error
       );
-      this.feedbackHistory.push({
-        round,
-        status: feedback.status,
-      });
+      feedback = detectRepeatedFailure(feedback, this.feedbackHistory);
+      feedbackEntry = toFeedbackHistoryEntry(feedback);
+      this.feedbackHistory.push(feedbackEntry);
       this.config.injector.inject(this.messages, feedback);
       feedbackStatus = feedback.status;
     }
-    return { content, feedbackStatus };
+    return { content, feedbackStatus, feedback: feedbackEntry };
   }
 
   private buildResult(reason: string, round: number): RunResult {

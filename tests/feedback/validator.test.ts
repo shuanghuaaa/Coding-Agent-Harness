@@ -28,4 +28,12 @@ describe('FeedbackValidator', () => {
     expect(result.failures.length).toBeGreaterThan(0);
     expect(result.failures[0].type).toBe('runtime');
   });
+
+  it('prefers parseable stdout over generic stderr error', () => {
+    const output = 'FAIL: add(1, 2) expected 3, got -1 at src/math.ts:3:12';
+    const result = validator.validate(output, 1, 'Command failed with exit code 1');
+    expect(result.status).toBe('fail');
+    expect(result.failures[0].testName).toBe('add(1, 2)');
+    expect(result.failureTypes).toContain('assertion');
+  });
 });
