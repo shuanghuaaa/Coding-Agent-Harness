@@ -833,13 +833,12 @@ export default function App() {
       <aside className="app-rail" aria-label="主导航">
         <button
           type="button"
-          className="app-rail-brand"
+          className="app-rail-logo"
           onClick={openHome}
           title="Coding Agent Harness"
-          aria-label="Coding Agent Harness"
+          aria-label="回到首页"
         >
-          <span className="app-rail-logo" aria-hidden>◆</span>
-          <span className="app-rail-brand-name">Coding Agent Harness</span>
+          ◆
         </button>
         <nav className="app-rail-nav">
           {RAIL_ITEMS.map((item) => (
@@ -868,6 +867,9 @@ export default function App() {
       </aside>
 
       <div className="app-canvas">
+        <button type="button" className="app-page-brand" onClick={openHome}>
+          Coding Agent Harness
+        </button>
         <div className="app-stage">
       <div
         className={`app-body ${page !== 'session' ? 'no-sidebar' : ''} ${page === 'session' && sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
