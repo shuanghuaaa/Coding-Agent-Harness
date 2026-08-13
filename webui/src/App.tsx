@@ -792,7 +792,6 @@ export default function App() {
   const isBlankSession =
     page === 'session' && items.length === 0 && !busy && !activeSessionTask;
   const showHome = page === 'dashboard' || isBlankSession;
-  const showContextRail = page === 'session' && !isBlankSession;
 
   const RAIL_ITEMS: Array<{ icon: LucideIcon; label: string; active: boolean; onClick: () => void }> = [
     { icon: Home, label: 'Home', active: showHome, onClick: openHome },
@@ -803,7 +802,7 @@ export default function App() {
   ];
 
   return (
-    <div className={`app-shell ${showContextRail ? 'has-context-rail' : ''}`}>
+    <div className="app-shell has-context-rail">
       {hitlRequest && (
         <HITLModal
           request={hitlRequest}
@@ -938,7 +937,7 @@ export default function App() {
         </div>
       </aside>
 
-      <div className={`app-canvas ${showContextRail ? 'has-context-rail' : ''}`}>
+      <div className="app-canvas has-context-rail">
         <div className="app-stage">
         <button type="button" className="app-page-brand" onClick={openHome}>
           Coding Agent Harness
@@ -1454,15 +1453,14 @@ export default function App() {
       </div>
         </div>
       </div>
-      {showContextRail && (
-        <div
-          className={`context-panel ${openContextOrder.length === 0 ? 'rail-only' : ''}`}
-          style={
-            openContextOrder.length > 0
-              ? { width: 'auto', maxWidth: 'none' }
-              : undefined
-          }
-        >
+      <div
+        className={`context-panel ${openContextOrder.length === 0 ? 'rail-only' : ''}`}
+        style={
+          openContextOrder.length > 0
+            ? { width: 'auto', maxWidth: 'none' }
+            : undefined
+        }
+      >
           {openContextOrder.length > 0 && (
             <div
               className="col-resize-handle context-col-handle"
@@ -1645,7 +1643,6 @@ export default function App() {
             </div>
           )}
         </div>
-      )}
     </div>
   );
 }

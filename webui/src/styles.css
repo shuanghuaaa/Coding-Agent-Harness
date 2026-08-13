@@ -1460,7 +1460,7 @@ body.is-col-resizing .col-resize-handle {
   align-self: stretch;
   height: 100vh;
   min-height: 0;
-  min-width: 0;
+  min-width: 48px;
   background: var(--canvas);
   overflow: hidden;
   flex-shrink: 0;
