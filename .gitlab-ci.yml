@@ -6,18 +6,31 @@ stages:
 
 unit-test:
   stage: test
+  before_script:
+    - apt-get update -qq
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 make g++
   script:
-    - npm ci
+    - npm ci --omit=optional
     - npm test
 
 docker-build:
   stage: build
-  image: docker:latest
+  image: docker:24
   services:
-    - docker:dind
+    - name: docker:24-dind
+      alias: docker
+      command: ["--tls=false"]
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_DRIVER: overlay2
+  before_script:
+    - until docker info >/dev/null 2>&1; do sleep 1; done
   script:
     - docker build -t coding-agent-harness:latest .
   only:
     - master
     - main
     - merge_requests
+  # NJU / 部分共享 Runner 未开 privileged，dind 会失败；unit-test 仍决定流水线是否通过
+  allow_failure: true
