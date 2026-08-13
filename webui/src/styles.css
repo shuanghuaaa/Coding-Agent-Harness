@@ -223,20 +223,19 @@ textarea {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 12px 16px 16px 8px;
+  padding: 16px 16px 16px 8px;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 
 .app-page-brand {
+  flex-shrink: 0;
   align-self: flex-start;
   margin: 0;
-  padding: 0 4px;
+  padding: 16px 20px 8px;
   border: none;
   background: transparent;
   color: var(--ink);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.03em;
   line-height: 1.2;
@@ -257,6 +256,7 @@ textarea {
   box-shadow: var(--shadow-md);
   overflow: hidden;
   display: flex;
+  flex-direction: column;
 }
 
 .app-body {

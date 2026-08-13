@@ -867,10 +867,10 @@ export default function App() {
       </aside>
 
       <div className="app-canvas">
+        <div className="app-stage">
         <button type="button" className="app-page-brand" onClick={openHome}>
           Coding Agent Harness
         </button>
-        <div className="app-stage">
       <div
         className={`app-body ${page !== 'session' ? 'no-sidebar' : ''} ${page === 'session' && sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
         style={
