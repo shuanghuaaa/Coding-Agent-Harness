@@ -5,8 +5,19 @@
 
 Coding Agent Harness 是一个以 **反馈闭环** 为核心贡献的编码智能体系统。它封装 LLM，提供工具、治理护栏、记忆、反馈闭环、多角色编排和 CaseAI 风格 WebUI，让使用者看清 Agent 的每一个决策与修正环节。
 
+## 发布与线上地址
+
+完整条目见 [`LINKS.md`](LINKS.md)。
+
+| 项 | 链接 |
+|----|------|
+| GitHub Release | https://github.com/shuanghuaaa/Coding-Agent-Harness/releases#release-v1.0.0 |
+| 线上 WebUI | https://coding-agent-harness.zeabur.app |
+| 健康检查 | https://coding-agent-harness.zeabur.app/health |
+
 ## 目录
 
+- [发布与线上地址](#发布与线上地址)
 - [快速开始](#快速开始)
 - [安装与运行](#安装与运行)
 - [分发方式 (Docker)](#分发方式-docker)
@@ -265,6 +276,8 @@ npm test
 
 健康检查：https://coding-agent-harness.zeabur.app/health （正常时返回 `{"status":"ok"}`）
 
+GitHub Release：https://github.com/shuanghuaaa/Coding-Agent-Harness/releases#release-v1.0.0
+
 **部署架构：** GitHub 仓库 `master` → Zeabur 拉取并 Docker 构建 → 容器监听 `PORT` → 公网域名反代到 WebUI（Express 静态资源 + WebSocket / REST）。
 
 **机房位置：** 服务部署在 Zeabur **德国（Europe / Frankfurt 一带）** 节点。从国内校园网访问时，偶发超时、TLS 握手失败或页面长时间转圈，多半是跨境链路问题，不代表服务未启动。可依次尝试：
@@ -288,6 +301,7 @@ npm test
 
 | 文档 | 说明 |
 |------|------|
+| `LINKS.md` | GitHub Release 与线上域名 |
 | `SPEC.md` | 设计规格与 §A.4 / §A.5 |
 | `PLAN.md` | 实现计划总表（含完成标记） |
 | `SPEC_PROCESS.md` | 规约生成过程与冷启动 |
