@@ -148,7 +148,7 @@
 | `.env` 文件泄露 | 不使用 `.env` 明文存储，优先用 OS 钥匙串（Windows Credential Manager） |
 | 日志泄露 | 日志中过滤所有 `sk-` 开头的字符串及 Bearer token |
 | 跨平台风险 | Windows CM 不可用时 fallback 到 AES-256-GCM 加密文件（随机 IV + 认证标签），主密码由用户通过 `HARNESS_MASTER_PASSWORD` 环境变量设定 |
-| 传输安全 | WebSocket 连接支持 token 认证（`HARNESS_TOKEN` 环境变量） |
+| 传输安全 | 云部署由平台提供 HTTPS；当前 HTTP / WebSocket 不设应用层令牌，适合单用户演示 |
 
 ### 4.3 可用性
 

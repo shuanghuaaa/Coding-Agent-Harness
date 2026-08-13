@@ -73,7 +73,6 @@ npm run dev
 | `LLM_API_KEY` | API 密钥 | — |
 | `LLM_MODEL` | 模型名称 | `gpt-4o` |
 | `LLM_BASE_URL` | API 端点 URL | `https://api.openai.com/v1` |
-| `HARNESS_TOKEN` | WebSocket 认证令牌 | 空（无认证） |
 | `HARNESS_WORKSPACE` | 工具操作的工作区根目录 | 当前目录 |
 | `HARNESS_MASTER_PASSWORD` | AES 加密凭证的主密码 | — |
 | `PORT` | 服务器端口 | `3000` |
@@ -143,7 +142,7 @@ curl -X POST http://localhost:3000/api/credentials \
 
 - 工具默认限制在 `HARNESS_WORKSPACE` 工作区内，文件路径做遍历检查
 - 危险 shell / 系统路径 / 外发请求等由 `guardrail` 拦截，可经 HITL 审批
-- WebSocket 可用 `HARNESS_TOKEN` 做查询参数令牌认证（生产环境建议升级）
+- 当前 WebUI 与 WebSocket 不设应用层访问令牌，公网部署依赖平台 HTTPS，适合单用户演示
 - 仓库与镜像中不得包含真实 API Key；日志过滤 `sk-` 等敏感模式
 - Mock LLM 模式可在无密钥环境下完整跑通单测与本地演示
 
@@ -272,7 +271,7 @@ npm test
 
 - **单用户**：当前版本不支持多用户并发任务
 - **无任务队列**：同一时间只能运行一个 Agent 任务
-- **WebSocket 认证**：基于查询参数 token，生产环境建议使用更安全的认证方式
+- **公网暴露面**：当前版本不设应用层访问令牌，生产环境建议在网关加认证
 - **文件工具沙箱**：依赖工作区根目录设置，需确保 `HARNESS_WORKSPACE` 正确配置
 - **平台兼容**：Windows 和 macOS/Linux 路径分隔符均支持，但部分 shell 命令可能因操作系统而异
 
