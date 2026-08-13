@@ -26,7 +26,6 @@ import {
   FileText,
   File,
   Clock,
-  RotateCcw,
   History,
   Trash2,
   Search,
@@ -215,7 +214,7 @@ export default function App() {
   const [workspacePath, setWorkspacePath] = useState('');
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   const [folderPickerMode, setFolderPickerMode] = useState<'workspace' | 'import'>('workspace');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('harness-rail-collapsed') === '1');
   const [openContextPanels, setOpenContextPanels] = useState<Record<ContextPanelKey, boolean>>({
     files: true,
     metrics: false,
@@ -231,21 +230,14 @@ export default function App() {
     start: number[];
   } | null>(null);
   const colDragRef = useRef<
-    | { kind: 'sidebar'; startX: number; startW: number }
     | { kind: 'context'; startX: number; startW: number }
     | null
   >(null);
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const n = Number(localStorage.getItem('harness-sidebar-w'));
-    return Number.isFinite(n) && n >= 200 && n <= 420 ? n : 240;
-  });
   const [contextBodyWidth, setContextBodyWidth] = useState(() => {
     const n = Number(localStorage.getItem('harness-context-w'));
     return Number.isFinite(n) && n >= 200 && n <= 520 ? n : 300;
   });
-  const sidebarWidthRef = useRef(sidebarWidth);
   const contextBodyWidthRef = useRef(contextBodyWidth);
-  sidebarWidthRef.current = sidebarWidth;
   contextBodyWidthRef.current = contextBodyWidth;
   const [projectsPanelOpen, setProjectsPanelOpen] = useState(false);
   const [projects, setProjects] = useState<SavedProject[]>(() => loadProjects());
@@ -381,10 +373,7 @@ export default function App() {
       }
 
       const colDrag = colDragRef.current;
-      if (colDrag?.kind === 'sidebar') {
-        const next = Math.min(420, Math.max(200, colDrag.startW + (e.clientX - colDrag.startX)));
-        setSidebarWidth(next);
-      } else if (colDrag?.kind === 'context') {
+      if (colDrag?.kind === 'context') {
         // Dragging the left edge of the right panel: moving left increases width.
         const next = Math.min(520, Math.max(200, colDrag.startW + (colDrag.startX - e.clientX)));
         setContextBodyWidth(next);
@@ -395,13 +384,8 @@ export default function App() {
         resizeDragRef.current = null;
       }
       if (colDragRef.current) {
-        const kind = colDragRef.current.kind;
         colDragRef.current = null;
-        if (kind === 'sidebar') {
-          localStorage.setItem('harness-sidebar-w', String(sidebarWidthRef.current));
-        } else {
-          localStorage.setItem('harness-context-w', String(contextBodyWidthRef.current));
-        }
+        localStorage.setItem('harness-context-w', String(contextBodyWidthRef.current));
       }
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
@@ -414,14 +398,6 @@ export default function App() {
       window.removeEventListener('mouseup', onUp);
     };
   }, []);
-
-  const startSidebarResize = useCallback((e: ReactMouseEvent) => {
-    e.preventDefault();
-    colDragRef.current = { kind: 'sidebar', startX: e.clientX, startW: sidebarWidth };
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.body.classList.add('is-col-resizing');
-  }, [sidebarWidth]);
 
   const startContextColResize = useCallback((e: ReactMouseEvent) => {
     e.preventDefault();
@@ -802,8 +778,17 @@ export default function App() {
     goToRecentConversation();
   };
 
+  const toggleRail = () => {
+    setSidebarCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem('harness-rail-collapsed', next ? '1' : '0');
+      return next;
+    });
+  };
+
   const RAIL_ITEMS: Array<{ icon: LucideIcon; label: string; active: boolean; onClick: () => void }> = [
     { icon: Home, label: 'Home', active: page === 'dashboard', onClick: openHome },
+    { icon: Plus, label: '新建任务', active: false, onClick: handleNewSession },
     { icon: MessageSquare, label: '会话', active: page === 'session', onClick: openSessions },
     { icon: Folder, label: '项目', active: page === 'project' || projectsPanelOpen, onClick: () => { setProjectsPanelOpen(false); setPage('project'); } },
     { icon: Settings, label: '设置', active: page === 'settings', onClick: () => { setProjectsPanelOpen(false); setPage('settings'); } },
@@ -830,7 +815,27 @@ export default function App() {
         />
       )}
 
-      <aside className="app-rail" aria-label="主导航">
+      <aside className={`app-rail ${sidebarCollapsed ? 'collapsed' : ''}`} aria-label="主导航">
+        <div className="app-rail-head">
+          <button
+            type="button"
+            className="app-rail-logo"
+            onClick={openHome}
+            title="Coding Agent Harness"
+            aria-label="回到首页"
+          >
+            ◆
+          </button>
+          <button
+            type="button"
+            className="app-rail-toggle"
+            onClick={toggleRail}
+            aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+            title={sidebarCollapsed ? '展开' : '缩进'}
+          >
+            {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+          </button>
+        </div>
         <nav className="app-rail-nav">
           {RAIL_ITEMS.map((item) => (
             <button
@@ -838,77 +843,15 @@ export default function App() {
               type="button"
               className={`app-rail-btn ${item.active ? 'active' : ''}`}
               onClick={item.onClick}
+              title={item.label}
             >
               <item.icon size={20} strokeWidth={1.75} fill={item.active ? 'currentColor' : 'none'} />
               <span>{item.label}</span>
             </button>
           ))}
         </nav>
-        <div className="app-rail-foot">
-          <button
-            type="button"
-            className="app-rail-btn"
-            onClick={toggleTheme}
-            aria-label={theme === 'light' ? '切换到深色模式' : '切换到浅色模式'}
-          >
-            {theme === 'light' ? <Moon size={18} strokeWidth={1.75} /> : <Sun size={18} strokeWidth={1.75} />}
-            <span>{theme === 'light' ? '深色' : '浅色'}</span>
-          </button>
-        </div>
-      </aside>
-
-      <div className="app-canvas">
-        <div className="app-stage">
-      <div
-        className={`app-body ${page !== 'session' ? 'no-sidebar' : ''} ${page === 'session' && sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
-        style={
-          page === 'session'
-            ? {
-                gridTemplateColumns: sidebarCollapsed
-                  ? '56px minmax(0, 1fr)'
-                  : `${sidebarWidth}px minmax(0, 1fr)`,
-              }
-            : undefined
-        }
-      >
-        {page === 'session' && (
-        <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
-          {!sidebarCollapsed && (
-            <div
-              className="col-resize-handle sidebar-col-handle"
-              onMouseDown={startSidebarResize}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="调整左侧边栏宽度"
-            />
-          )}
-          <div className="sidebar-header">
-            {!sidebarCollapsed && (
-              <div className="sidebar-logo">
-                <span className="sidebar-logo-text">会话</span>
-              </div>
-            )}
-            <div className="sidebar-header-actions">
-              <button
-                type="button"
-                className="theme-toggle"
-                onClick={() => setSidebarCollapsed((v) => !v)}
-                aria-label={sidebarCollapsed ? '展开会话列表' : '收起会话列表'}
-                title={sidebarCollapsed ? '展开' : '缩进'}
-              >
-                {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-              </button>
-            </div>
-          </div>
-
-          {!sidebarCollapsed && (
-            <>
-          <button type="button" className="new-task-btn" onClick={handleNewSession}>
-            <Plus size={16} />
-            新建任务
-          </button>
-
-          <div className="sidebar-sessions">
+        {!sidebarCollapsed && (
+          <div className="app-rail-history">
             <div className="sessions-header">
               <History size={12} />
               <span>最近会话</span>
@@ -967,28 +910,35 @@ export default function App() {
               })}
             </ul>
           </div>
-
-          <div className="sidebar-footer">
-            <div className="user-avatar">U</div>
-            <div className="user-info">
-              <div className="user-name">开发者</div>
-              <div className="user-plan">{connected ? '已连接' : '未连接'}</div>
-            </div>
-          </div>
-            </>
-          )}
-        </aside>
         )}
+        <div className="app-rail-foot">
+          <button
+            type="button"
+            className="app-rail-btn"
+            onClick={toggleTheme}
+            aria-label={theme === 'light' ? '切换到深色模式' : '切换到浅色模式'}
+            title={theme === 'light' ? '深色' : '浅色'}
+          >
+            {theme === 'light' ? <Moon size={18} strokeWidth={1.75} /> : <Sun size={18} strokeWidth={1.75} />}
+            <span>{theme === 'light' ? '深色' : '浅色'}</span>
+          </button>
+        </div>
+      </aside>
 
+      <div className="app-canvas">
+        <div className="app-stage">
+        <button type="button" className="app-page-brand" onClick={openHome}>
+          Coding Agent Harness
+        </button>
+      <div className="app-body no-sidebar">
         <main className="main-area">
           {page === 'dashboard' && (
             <div className="page-home">
               <div className="home-ask">
                 <div className="home-brand">
                   <span className="home-brand-mark" aria-hidden>◆</span>
-                  <h1 className="home-brand-name">Coding Agent Harness</h1>
                 </div>
-                <p className="home-greet">想做什么？</p>
+                <h1 className="home-greet">想做什么？</h1>
                 <form
                   className={`composer ${dragOver ? 'drag-over' : ''} ${composerFocused ? 'expanded' : ''}`}
                   onSubmit={handleSubmit}
@@ -1084,12 +1034,6 @@ export default function App() {
                       {orchestratorStatus ? ` · ${orchestratorStatus.phase}` : ''}
                     </span>
                   )}
-                </div>
-                <div className="session-header-right">
-                  <button type="button" className="header-btn" onClick={handleNewSession}>
-                    <RotateCcw size={14} />
-                    新会话
-                  </button>
                 </div>
               </div>
 

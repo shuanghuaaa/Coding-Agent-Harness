@@ -146,39 +146,115 @@ textarea {
 }
 
 .app-rail {
-  width: 72px;
+  width: 240px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 16px 8px 20px;
+  align-items: stretch;
+  padding: 12px 10px 16px;
   gap: 8px;
+  min-height: 0;
+  height: 100vh;
+  background: var(--canvas);
+  overflow: hidden;
+  transition: width 180ms var(--ease-out);
+}
+
+.app-rail.collapsed {
+  width: 48px;
+  padding: 12px 6px 16px;
+  align-items: center;
+}
+
+.app-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px 4px;
+  flex-shrink: 0;
+}
+
+.app-rail.collapsed .app-rail-head {
+  flex-direction: column;
+  padding: 0;
+}
+
+.app-rail-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.app-rail-toggle {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.app-rail-toggle:hover {
+  color: var(--text);
+  background: var(--bg-inset);
+  border-color: var(--border);
 }
 
 .app-rail-nav {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 4px;
-  flex: 1;
+  flex-shrink: 0;
   width: 100%;
+}
+
+.app-rail.collapsed .app-rail-nav {
+  align-items: center;
 }
 
 .app-rail-btn {
   width: 100%;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 4px;
-  padding: 8px 4px;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
-  line-height: 14px;
-  border-radius: 12px;
+  line-height: 18px;
+  border-radius: 8px;
   cursor: pointer;
+}
+
+.app-rail.collapsed .app-rail-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+}
+
+.app-rail.collapsed .app-rail-btn span {
+  display: none;
 }
 
 .app-rail-btn:hover {
@@ -191,11 +267,31 @@ textarea {
   color: var(--ink);
 }
 
+.app-rail-history {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 8px 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.app-rail-history .session-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
 .app-rail-foot {
   display: flex;
   flex-direction: column;
   gap: 4px;
   width: 100%;
+  flex-shrink: 0;
+}
+
+.app-rail.collapsed .app-rail-foot {
+  align-items: center;
 }
 
 .app-canvas {
@@ -215,6 +311,27 @@ textarea {
   box-shadow: var(--shadow-md);
   overflow: hidden;
   display: flex;
+  flex-direction: column;
+}
+
+.app-page-brand {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin: 0;
+  padding: 16px 20px 8px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  cursor: pointer;
+  text-align: left;
+}
+
+.app-page-brand:hover {
+  color: var(--ink-strong);
 }
 
 .app-body {
@@ -2543,11 +2660,11 @@ body.is-col-resizing .col-resize-handle {
 }
 
 @media (max-width: 768px) {
+  .app-rail:not(.collapsed) {
+    width: 200px;
+  }
   .app-body {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .sidebar {
-    display: none;
   }
   .stats-grid,
   .projects-grid,
@@ -3472,23 +3589,13 @@ body.is-col-resizing .col-resize-handle {
   font-size: 20px;
 }
 
-.home-brand-name {
-  margin: 0;
-  font-size: 28px;
-  line-height: 34px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  color: var(--ink);
-  text-align: center;
-}
-
 .home-greet {
   font-family: var(--font);
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  color: var(--muted);
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
   text-align: center;
   margin: 0 0 8px;
 }
