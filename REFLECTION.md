@@ -6,7 +6,7 @@
 
 ## 哪些 Superpowers 技能发挥了最大作用、哪些"形式大于实质"？
 
-对本项目贡献最大的是 brainstorming 与 writing-plans。项mu时打算对六个维度均衡加深，brainstorming 将范围收敛为：六维给出可运行的最低实现，反馈闭环作为主贡献，并满足可 mock、可分类、可多轮修正的判定，后续计划因此围绕同一主线展开。writing-plans 将 Agent 主循环、治理护栏与反馈模块拆分为含目标、文件路径与验证步骤的 task，`test-driven-development` 因此具备可执行入口。内核阶段的失败用例（MockLLM 序列、guardrail 拦截、validator 判定）为 subagent 设定了可检验边界，实现无法仅凭描述性提示通过验收。
+对本项目贡献最大的是 brainstorming 与 writing-plans。在项目初期设计时，原本计划对六个维度均衡加深，brainstorming 对计划提出质疑，并分析了由于时间与算力限制导致的不可行性，随后我将范围收敛为：六维给出可运行的最低实现，反馈闭环作为主贡献，并满足可 mock、可分类、可多轮修正的判定，后续计划因此围绕同一主线展开。writing-plans 将 Agent 主循环、治理护栏与反馈模块拆分为含目标、文件路径与验证步骤的 task，`test-driven-development` 因此具备可执行入口。内核阶段的失败用例（MockLLM 序列、guardrail 拦截、validator 判定）为 subagent 设定了可检验边界，实现无法仅凭描述性提示通过验收。
 
 形式大于实质的部分主要出现在 `requesting-code-review`，评审意见会重复已修复的风格问题，或超出当前 task 的文件范围。此后评审固定为两阶段：先核对 SPEC 合规，再检查代码质量，Critical 项关闭后方可进入下一 task，该约束使评审重新服务于交付门禁。`using-git-worktrees` 在并行修改 UI 与内核时提供了工作区隔离，但分支数量增加且默认分支配置错误时，合并与文档同步成本显著上升。最终将功能分支收敛到 `master`，并以 `SPEC.md`、`PLAN.md`、`AGENT_LOG.md` 作为过程证据的主载体。
 
