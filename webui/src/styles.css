@@ -155,6 +155,24 @@ textarea {
   gap: 8px;
 }
 
+.app-rail-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+
+.app-rail-brand:hover .app-rail-logo {
+  transform: scale(1.04);
+}
+
 .app-rail-logo {
   width: 40px;
   height: 40px;
@@ -165,7 +183,21 @@ textarea {
   align-items: center;
   justify-content: center;
   font-size: 16px;
-  margin-bottom: 12px;
+  flex-shrink: 0;
+  transition: transform 120ms var(--ease-out);
+}
+
+.app-rail-brand-name {
+  display: block;
+  width: 100%;
+  max-width: 64px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-align: center;
+  word-break: break-word;
 }
 
 .app-rail-nav {
