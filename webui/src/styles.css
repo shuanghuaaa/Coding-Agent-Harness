@@ -181,6 +181,7 @@ textarea {
 }
 
 .app-rail-logo {
+  position: relative;
   width: 36px;
   height: 36px;
   border-radius: 8px;
@@ -193,6 +194,60 @@ textarea {
   border: none;
   cursor: pointer;
   flex-shrink: 0;
+  overflow: hidden;
+  transition: background 160ms var(--ease-out), color 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.app-rail-logo:active {
+  transform: scale(0.97);
+}
+
+.app-rail-logo-mark,
+.app-rail-logo-expand {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 160ms var(--ease-out);
+}
+
+.app-rail-logo-mark {
+  opacity: 1;
+}
+
+.app-rail-logo-expand {
+  opacity: 0;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.app-rail.collapsed .app-rail-logo:focus-visible {
+  background: var(--fill);
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.app-rail.collapsed .app-rail-logo:focus-visible .app-rail-logo-mark {
+  opacity: 0;
+}
+
+.app-rail.collapsed .app-rail-logo:focus-visible .app-rail-logo-expand {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .app-rail.collapsed .app-rail-logo:hover {
+    background: var(--fill);
+  }
+
+  .app-rail.collapsed .app-rail-logo:hover .app-rail-logo-mark {
+    opacity: 0;
+  }
+
+  .app-rail.collapsed .app-rail-logo:hover .app-rail-logo-expand {
+    opacity: 1;
+  }
 }
 
 .app-rail-toggle {
@@ -207,12 +262,17 @@ textarea {
   color: var(--text-dim);
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 160ms var(--ease-out), color 160ms var(--ease-out), border-color 160ms var(--ease-out), transform 160ms var(--ease-out);
 }
 
 .app-rail-toggle:hover {
   color: var(--text);
   background: var(--bg-inset);
   border-color: var(--border);
+}
+
+.app-rail-toggle:active {
+  transform: scale(0.97);
 }
 
 .app-rail-nav {
@@ -300,6 +360,10 @@ textarea {
   min-height: 0;
   padding: 16px 16px 16px 8px;
   display: flex;
+}
+
+.app-canvas.has-context-rail {
+  padding-right: 8px;
 }
 
 .app-stage {
@@ -1209,7 +1273,6 @@ body.is-col-resizing .col-resize-handle {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  border-right: 1px solid var(--border);
 }
 
 .chat-messages {
@@ -1394,31 +1457,40 @@ body.is-col-resizing .col-resize-handle {
   position: relative;
   display: flex;
   flex-direction: row-reverse;
+  align-self: stretch;
+  height: 100vh;
   min-height: 0;
   min-width: 0;
-  background: var(--bg-panel);
+  background: var(--canvas);
   overflow: hidden;
   flex-shrink: 0;
-  border-left: 1px solid var(--border);
-  width: auto;
+  border-left: none;
+  width: 48px;
   max-width: min(560px, 48vw);
+  padding: 12px 10px 16px 0;
+}
+
+.context-panel:not(.rail-only) {
+  width: auto;
+  max-width: none;
 }
 
 .context-panel.rail-only {
   width: 48px;
   overflow: visible;
+  padding: 12px 6px 16px;
 }
 
 .context-icon-rail {
-  width: 48px;
+  width: 36px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 12px 0;
-  border-left: 1px solid var(--border);
-  background: var(--sidebar-bg);
+  gap: 4px;
+  padding: 0;
+  border-left: none;
+  background: transparent;
   z-index: 2;
 }
 
@@ -1498,6 +1570,13 @@ body.is-col-resizing .col-resize-handle {
   flex-direction: column;
   overflow: hidden;
   border-right: none;
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  margin: 4px 8px 0 0;
+  align-self: stretch;
+  height: calc(100% - 4px);
+  max-height: calc(100% - 4px);
 }
 
 .context-section {
@@ -2673,10 +2752,6 @@ body.is-col-resizing .col-resize-handle {
   }
   .session-content {
     flex-direction: column;
-  }
-  .context-panel {
-    width: 100%;
-    border-top: 1px solid var(--border);
   }
 }
 

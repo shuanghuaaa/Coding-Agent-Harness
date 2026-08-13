@@ -664,7 +664,10 @@ export default function App() {
     setExpandedRounds({});
     setRollbackDone(false);
     setRollbackError(null);
-    setPage('session');
+    setTask('');
+    setAttachedFiles([]);
+    setComposerFocused(false);
+    setPage('dashboard');
   };
 
   /** 关闭仪表盘 / 多 Agent / 设置后回到最近对话 */
@@ -786,16 +789,21 @@ export default function App() {
     });
   };
 
+  const isBlankSession =
+    page === 'session' && items.length === 0 && !busy && !activeSessionTask;
+  const showHome = page === 'dashboard' || isBlankSession;
+  const showContextRail = page === 'session' && !isBlankSession;
+
   const RAIL_ITEMS: Array<{ icon: LucideIcon; label: string; active: boolean; onClick: () => void }> = [
-    { icon: Home, label: 'Home', active: page === 'dashboard', onClick: openHome },
+    { icon: Home, label: 'Home', active: showHome, onClick: openHome },
     { icon: Plus, label: '新建任务', active: false, onClick: handleNewSession },
-    { icon: MessageSquare, label: '会话', active: page === 'session', onClick: openSessions },
+    { icon: MessageSquare, label: '会话', active: page === 'session' && !isBlankSession, onClick: openSessions },
     { icon: Folder, label: '项目', active: page === 'project' || projectsPanelOpen, onClick: () => { setProjectsPanelOpen(false); setPage('project'); } },
     { icon: Settings, label: '设置', active: page === 'settings', onClick: () => { setProjectsPanelOpen(false); setPage('settings'); } },
   ];
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${showContextRail ? 'has-context-rail' : ''}`}>
       {hitlRequest && (
         <HITLModal
           request={hitlRequest}
@@ -820,21 +828,26 @@ export default function App() {
           <button
             type="button"
             className="app-rail-logo"
-            onClick={openHome}
-            title="Coding Agent Harness"
-            aria-label="回到首页"
+            onClick={sidebarCollapsed ? toggleRail : openHome}
+            title={sidebarCollapsed ? '展开侧栏' : 'Coding Agent Harness'}
+            aria-label={sidebarCollapsed ? '展开侧栏' : '回到首页'}
           >
-            ◆
+            <span className="app-rail-logo-mark" aria-hidden>◆</span>
+            <span className="app-rail-logo-expand" aria-hidden>
+              <PanelLeft size={16} />
+            </span>
           </button>
-          <button
-            type="button"
-            className="app-rail-toggle"
-            onClick={toggleRail}
-            aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
-            title={sidebarCollapsed ? '展开' : '缩进'}
-          >
-            {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-          </button>
+          {!sidebarCollapsed && (
+            <button
+              type="button"
+              className="app-rail-toggle"
+              onClick={toggleRail}
+              aria-label="收起侧栏"
+              title="缩进"
+            >
+              <PanelLeftClose size={16} />
+            </button>
+          )}
         </div>
         <nav className="app-rail-nav">
           {RAIL_ITEMS.map((item) => (
@@ -925,14 +938,14 @@ export default function App() {
         </div>
       </aside>
 
-      <div className="app-canvas">
+      <div className={`app-canvas ${showContextRail ? 'has-context-rail' : ''}`}>
         <div className="app-stage">
         <button type="button" className="app-page-brand" onClick={openHome}>
           Coding Agent Harness
         </button>
       <div className="app-body no-sidebar">
         <main className="main-area">
-          {page === 'dashboard' && (
+          {showHome && (
             <div className="page-home">
               <div className="home-ask">
                 <div className="home-brand">
@@ -1018,7 +1031,7 @@ export default function App() {
             </div>
           )}
 
-          {page === 'session' && (
+          {page === 'session' && !isBlankSession && (
             <div className="page-session">
               <div className="session-header">
                 <div className="session-header-left">
@@ -1140,197 +1153,6 @@ export default function App() {
                       </div>
                     </form>
                   </div>
-                </div>
-
-                <div
-                  className={`context-panel ${openContextOrder.length === 0 ? 'rail-only' : ''}`}
-                  style={
-                    openContextOrder.length > 0
-                      ? { width: 48 + contextBodyWidth, maxWidth: 'none' }
-                      : undefined
-                  }
-                >
-                  {openContextOrder.length > 0 && (
-                    <div
-                      className="col-resize-handle context-col-handle"
-                      onMouseDown={startContextColResize}
-                      role="separator"
-                      aria-orientation="vertical"
-                      aria-label="调整右侧面板宽度"
-                    />
-                  )}
-                  <aside className="context-icon-rail" aria-label="工作区面板">
-                    {CONTEXT_DOCK_ITEMS.map((item) => {
-                      const Icon = item.icon;
-                      const active = openContextPanels[item.key];
-                      return (
-                        <button
-                          key={item.key}
-                          type="button"
-                          className={`context-dock-btn ${active ? 'active' : ''}`}
-                          onClick={() => toggleContextPanel(item.key)}
-                          aria-pressed={active}
-                          aria-label={item.label}
-                        >
-                          <Icon size={18} />
-                          <span className="context-dock-tooltip" role="tooltip">
-                            <strong>{item.label}</strong>
-                            <span>{item.hint}</span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </aside>
-
-                  {openContextOrder.length > 0 && (
-                    <div
-                      className="context-panel-body"
-                      ref={contextPanelRef}
-                      style={{ width: contextBodyWidth, flex: `0 0 ${contextBodyWidth}px` }}
-                    >
-                      {openContextOrder.map((key, index) => {
-                        const meta = CONTEXT_DOCK_ITEMS.find((item) => item.key === key)!;
-                        const TitleIcon = meta.icon;
-                        return (
-                          <Fragment key={key}>
-                            {index > 0 && (
-                              <div
-                                className="context-resize-handle"
-                                onMouseDown={(e) => startSectionResize(index - 1, e)}
-                                role="separator"
-                                aria-orientation="horizontal"
-                                aria-label={`调整${CONTEXT_DOCK_ITEMS.find((i) => i.key === openContextOrder[index - 1])?.label}与${meta.label}高度`}
-                              />
-                            )}
-                            <div
-                              className={`context-section context-${key}`}
-                              style={{ flexBasis: `${panelHeights[index] ?? 100 / openContextOrder.length}%` }}
-                            >
-                              <div className="context-section-title-row">
-                                <h3 className="context-section-title">
-                                  <TitleIcon size={14} />
-                                  {meta.label}
-                                </h3>
-                                <button
-                                  type="button"
-                                  className="context-section-close"
-                                  onClick={() => closeContextPanel(key)}
-                                  aria-label={`关闭${meta.label}`}
-                                  title="关闭"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
-
-                              {key === 'files' && (
-                                <>
-                                  <div className="workspace-bar">
-                                    <span className="workspace-path" title={workspacePath || '未选择'}>
-                                      {projectOpen ? (workspacePath || '未选择工作区') : '当前未打开项目'}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="header-btn"
-                                      onClick={() => openFolderPicker('workspace')}
-                                      title="打开文件夹"
-                                    >
-                                      <FolderOpen size={14} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="header-btn"
-                                      onClick={() => void handleCloseProject()}
-                                      disabled={!projectOpen}
-                                      title="关闭当前项目"
-                                    >
-                                      <FolderX size={14} />
-                                    </button>
-                                  </div>
-                                  <div className="file-tree-scroll">
-                                    {!projectOpen ? (
-                                      <div className="sessions-empty">请从左侧导入或打开项目</div>
-                                    ) : selectedFile ? (
-                                      <div className="file-viewer">
-                                        <div className="file-viewer-head">
-                                          <span className="file-viewer-path" title={selectedFile.path}>{selectedFile.path}</span>
-                                          <button
-                                            type="button"
-                                            className="file-viewer-close"
-                                            onClick={() => setSelectedFile(null)}
-                                            aria-label="关闭文件查看器"
-                                          >
-                                            <X size={14} />
-                                          </button>
-                                        </div>
-                                        <pre className="file-viewer-content">{selectedFile.content}</pre>
-                                      </div>
-                                    ) : (
-                                      <>
-                                        {fileTreeError && <div className="sessions-error">{fileTreeError}</div>}
-                                        {fileViewerError && <div className="sessions-error">{fileViewerError}</div>}
-                                        {!fileTreeError && fileTree.length === 0 && (
-                                          <div className="sessions-empty">
-                                            <div className="skeleton-row" style={{ width: '90%', marginBottom: '8px' }} />
-                                            <div className="skeleton-row" style={{ width: '70%', marginBottom: '8px' }} />
-                                            <div className="skeleton-row" style={{ width: '50%' }} />
-                                          </div>
-                                        )}
-                                        <div className="file-tree">
-                                          {fileTree.map((node) => (
-                                            <FileTreeNodeView
-                                              key={node.path}
-                                              node={node}
-                                              depth={0}
-                                              modifiedPaths={modifiedPaths}
-                                              selectedPath={null}
-                                              onFileClick={(path) => void handleFileClick(path)}
-                                            />
-                                          ))}
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                </>
-                              )}
-
-                              {key === 'metrics' && (
-                                <div className="context-section-body">
-                                  <div className="token-bar">
-                                    <div className="token-label">
-                                      <span>任务轮次</span>
-                                      <span>{displayRoundCount}</span>
-                                    </div>
-                                    <div className="token-label">
-                                      <span>工具调用</span>
-                                      <span>{toolCallCount}</span>
-                                    </div>
-                                    <div className="token-label">
-                                      <span>变更文件</span>
-                                      <span>{checkpoint?.files.length ?? 0}</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {key === 'checkpoint' && (
-                                <div className="context-section-body">
-                                  <DiffPanel
-                                    checkpoint={checkpoint}
-                                    onRolledBack={() => {
-                                      setRollbackDone(true);
-                                      clearCheckpoint();
-                                      setRollbackMsg('已回滚到本轮任务开始时的检查点');
-                                      void listWorkspaceFiles().then(setFileTree).catch(() => undefined);
-                                    }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </Fragment>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -1632,6 +1454,198 @@ export default function App() {
       </div>
         </div>
       </div>
+      {showContextRail && (
+        <div
+          className={`context-panel ${openContextOrder.length === 0 ? 'rail-only' : ''}`}
+          style={
+            openContextOrder.length > 0
+              ? { width: 'auto', maxWidth: 'none' }
+              : undefined
+          }
+        >
+          {openContextOrder.length > 0 && (
+            <div
+              className="col-resize-handle context-col-handle"
+              onMouseDown={startContextColResize}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整右侧面板宽度"
+            />
+          )}
+          <aside className="context-icon-rail" aria-label="工作区面板">
+            {CONTEXT_DOCK_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const active = openContextPanels[item.key];
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`context-dock-btn ${active ? 'active' : ''}`}
+                  onClick={() => toggleContextPanel(item.key)}
+                  aria-pressed={active}
+                  aria-label={item.label}
+                >
+                  <Icon size={18} />
+                  <span className="context-dock-tooltip" role="tooltip">
+                    <strong>{item.label}</strong>
+                    <span>{item.hint}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </aside>
+
+          {openContextOrder.length > 0 && (
+            <div
+              className="context-panel-body"
+              ref={contextPanelRef}
+              style={{ width: contextBodyWidth, flex: `0 0 ${contextBodyWidth}px` }}
+            >
+              {openContextOrder.map((key, index) => {
+                const meta = CONTEXT_DOCK_ITEMS.find((item) => item.key === key)!;
+                const TitleIcon = meta.icon;
+                return (
+                  <Fragment key={key}>
+                    {index > 0 && (
+                      <div
+                        className="context-resize-handle"
+                        onMouseDown={(e) => startSectionResize(index - 1, e)}
+                        role="separator"
+                        aria-orientation="horizontal"
+                        aria-label={`调整${CONTEXT_DOCK_ITEMS.find((i) => i.key === openContextOrder[index - 1])?.label}与${meta.label}高度`}
+                      />
+                    )}
+                    <div
+                      className={`context-section context-${key}`}
+                      style={{ flexBasis: `${panelHeights[index] ?? 100 / openContextOrder.length}%` }}
+                    >
+                      <div className="context-section-title-row">
+                        <h3 className="context-section-title">
+                          <TitleIcon size={14} />
+                          {meta.label}
+                        </h3>
+                        <button
+                          type="button"
+                          className="context-section-close"
+                          onClick={() => closeContextPanel(key)}
+                          aria-label={`关闭${meta.label}`}
+                          title="关闭"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      {key === 'files' && (
+                        <>
+                          <div className="workspace-bar">
+                            <span className="workspace-path" title={workspacePath || '未选择'}>
+                              {projectOpen ? (workspacePath || '未选择工作区') : '当前未打开项目'}
+                            </span>
+                            <button
+                              type="button"
+                              className="header-btn"
+                              onClick={() => openFolderPicker('workspace')}
+                              title="打开文件夹"
+                            >
+                              <FolderOpen size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="header-btn"
+                              onClick={() => void handleCloseProject()}
+                              disabled={!projectOpen}
+                              title="关闭当前项目"
+                            >
+                              <FolderX size={14} />
+                            </button>
+                          </div>
+                          <div className="file-tree-scroll">
+                            {!projectOpen ? (
+                              <div className="sessions-empty">请从左侧导入或打开项目</div>
+                            ) : selectedFile ? (
+                              <div className="file-viewer">
+                                <div className="file-viewer-head">
+                                  <span className="file-viewer-path" title={selectedFile.path}>{selectedFile.path}</span>
+                                  <button
+                                    type="button"
+                                    className="file-viewer-close"
+                                    onClick={() => setSelectedFile(null)}
+                                    aria-label="关闭文件查看器"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                                <pre className="file-viewer-content">{selectedFile.content}</pre>
+                              </div>
+                            ) : (
+                              <>
+                                {fileTreeError && <div className="sessions-error">{fileTreeError}</div>}
+                                {fileViewerError && <div className="sessions-error">{fileViewerError}</div>}
+                                {!fileTreeError && fileTree.length === 0 && (
+                                  <div className="sessions-empty">
+                                    <div className="skeleton-row" style={{ width: '90%', marginBottom: '8px' }} />
+                                    <div className="skeleton-row" style={{ width: '70%', marginBottom: '8px' }} />
+                                    <div className="skeleton-row" style={{ width: '50%' }} />
+                                  </div>
+                                )}
+                                <div className="file-tree">
+                                  {fileTree.map((node) => (
+                                    <FileTreeNodeView
+                                      key={node.path}
+                                      node={node}
+                                      depth={0}
+                                      modifiedPaths={modifiedPaths}
+                                      selectedPath={null}
+                                      onFileClick={(path) => void handleFileClick(path)}
+                                    />
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {key === 'metrics' && (
+                        <div className="context-section-body">
+                          <div className="token-bar">
+                            <div className="token-label">
+                              <span>任务轮次</span>
+                              <span>{displayRoundCount}</span>
+                            </div>
+                            <div className="token-label">
+                              <span>工具调用</span>
+                              <span>{toolCallCount}</span>
+                            </div>
+                            <div className="token-label">
+                              <span>变更文件</span>
+                              <span>{checkpoint?.files.length ?? 0}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {key === 'checkpoint' && (
+                        <div className="context-section-body">
+                          <DiffPanel
+                            checkpoint={checkpoint}
+                            onRolledBack={() => {
+                              setRollbackDone(true);
+                              clearCheckpoint();
+                              setRollbackMsg('已回滚到本轮任务开始时的检查点');
+                              void listWorkspaceFiles().then(setFileTree).catch(() => undefined);
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </Fragment>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
