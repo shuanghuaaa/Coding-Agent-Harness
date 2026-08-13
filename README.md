@@ -11,10 +11,12 @@ Coding Agent Harness 是一个以 **反馈闭环** 为核心贡献的编码智�
 - [安装与运行](#安装与运行)
 - [分发方式 (Docker)](#分发方式-docker)
 - [API Key 安全配置](#api-key-安全配置)
+- [安全边界](#安全边界)
 - [目录结构](#目录结构)
 - [核心机制](#核心机制)
+- [机制演示](#机制演示)
 - [WebUI](#webui)
-- [测试](#测试)
+- [测试与 CI](#测试与-ci)
 - [云部署](#云部署)
 - [已知限制](#已知限制)
 - [文档索引](#文档索引)
@@ -137,6 +139,14 @@ curl -X POST http://localhost:3000/api/credentials \
 - AES 加密使用 AES-256-GCM，随机 IV + 认证标签
 - 内存中的密钥在进程退出时自动清除
 
+## 安全边界
+
+- 工具默认限制在 `HARNESS_WORKSPACE` 工作区内，文件路径做遍历检查
+- 危险 shell / 系统路径 / 外发请求等由 `guardrail` 拦截，可经 HITL 审批
+- WebSocket 可用 `HARNESS_TOKEN` 做查询参数令牌认证（生产环境建议升级）
+- 仓库与镜像中不得包含真实 API Key；日志过滤 `sk-` 等敏感模式
+- Mock LLM 模式可在无密钥环境下完整跑通单测与本地演示
+
 ## 目录结构
 
 ```
@@ -209,6 +219,14 @@ Coding-Agent-Harness/
 - 跨会话存储项目约定、历史决策、偏好设置
 - `KeywordRetriever` 按任务关键词检索后注入上下文（非全量硬塞）
 
+## 机制演示
+
+对应作业 §A.6，入口：`tests/integration/harness-demo.test.ts`（`npm test` 即可复现）：
+
+1. 治理护栏拦截危险动作（如 `rm -rf /`）
+2. 注入测试失败 → 反馈闭环驱动 Agent 修正 → 通过
+3. 重点维度：重复失败 WARNING / 结构化 feedback history（反馈加深）
+
 ## WebUI
 
 CaseAI Match 风格的浅色 SaaS 操作台（近白画布 + 炭黑主按钮 + Inter）：
@@ -222,7 +240,7 @@ CaseAI Match 风格的浅色 SaaS 操作台（近白画布 + 炭黑主按钮 + I
 
 设计合同见 `webui/DESIGN.md`；规格见 `docs/superpowers/specs/2026-08-13-caseai-webui-redesign.md`。
 
-## 测试
+## 测试与 CI
 
 所有核心机制均使用 Mock LLM 进行确定性单元测试，不依赖网络或真实 LLM。
 
@@ -230,25 +248,25 @@ CaseAI Match 风格的浅色 SaaS 操作台（近白画布 + 炭黑主按钮 + I
 npm test
 ```
 
-### 机制演示
+### CI / CD
 
-`tests/integration/harness-demo.test.ts` 覆盖：
+| 平台 | 配置 | 作用 |
+|------|------|------|
+| GitLab CI | `.gitlab-ci.yml` | **必须**的 `unit-test` job（`npm ci && npm test`）；另有 `docker-build` |
+| GitHub Actions | `.github/workflows/ci.yml` | push/PR 跑单测与构建（`master` / `main`） |
+| Zeabur | 连接 GitHub `master` | 按 Dockerfile 构建并发布 Web 服务 |
 
-1. 治理护栏拦截危险动作
-2. 反馈闭环：注入失败 → Agent 修正 → 通过
-3. 重复失败警告等反馈加深行为
-
-`tests/agent/hitl.test.ts` 覆盖批准 / 拒绝 / 改参后执行。
-
-反馈单元测试：`tests/feedback/`（validator、classifier、injector、summary、repeated-failure、parsers）。
+作业要求的 CI/CD 执行记录以 GitLab / GitHub 流水线最后一次 **pass** 为准；本地可用 `npm test` 与 `docker build -t coding-agent-harness .` 复现。
 
 ## 云部署
 
 ### Zeabur
 
-线上地址：https://coding-agent-harness.zeabur.app
+线上 WebUI：https://coding-agent-harness.zeabur.app
 
-本项目部署在 [Zeabur](https://zeabur.com)。连接 GitHub 仓库后按 Dockerfile 构建 Web Service，并在控制台配置环境变量（如 `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`、`PORT` 等）。
+**部署架构：** GitHub 仓库 `master` → Zeabur 拉取并 Docker 构建 → 容器监听 `PORT` → 公网域名反代到 WebUI（Express 静态资源 + WebSocket / REST）。
+
+在 Zeabur 控制台配置环境变量（如 `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`、`PORT`、`HARNESS_WORKSPACE` 等）。密钥只放在平台密钥/环境变量中，不进镜像层与 Git。
 
 ## 已知限制
 
@@ -262,9 +280,11 @@ npm test
 
 | 文档 | 说明 |
 |------|------|
-| `SPEC.md` | 完整设计规格与 §A.4 合规声明 |
-| `webui/DESIGN.md` | WebUI 视觉与组件合同（CaseAI） |
-| `docs/superpowers/specs/2026-08-14-feedback-loop-deepening-design.md` | 反馈闭环加深 |
-| `docs/superpowers/specs/2026-08-14-session-role-multiselect-design.md` | 会话角色多选 |
-| `docs/superpowers/specs/2026-08-13-caseai-webui-redesign.md` | CaseAI WebUI 重设计 |
-| `docs/superpowers/specs/2026-08-10-file-session-orchestrator-design.md` | 会话 / 编排基础 |
+| `SPEC.md` | 设计规格与 §A.4 / §A.5 |
+| `PLAN.md` | 实现计划总表（含完成标记） |
+| `SPEC_PROCESS.md` | 规约生成过程与冷启动 |
+| `AGENT_LOG.md` | Superpowers 协作过程日志 |
+| `REFLECTION.md` | 反思报告 |
+| `webui/DESIGN.md` | WebUI 视觉合同（CaseAI） |
+| `docs/superpowers/specs/*` | 分主题设计规格 |
+| `docs/superpowers/plans/*` | 分主题细粒度计划 |
