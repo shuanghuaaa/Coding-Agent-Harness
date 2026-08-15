@@ -114,13 +114,13 @@ export async function importWorkspaceFolder(files: File[]): Promise<ImportWorksp
   }
   const firstRel = (picked[0].webkitRelativePath || picked[0].name).replace(/\\/g, '/');
   const name = firstRel.split('/')[0] || 'project';
-  const files = await Promise.all(
+  const payload = await Promise.all(
     picked.map(async (file) => ({
       path: (file.webkitRelativePath || file.name).replace(/\\/g, '/'),
       content: await file.text(),
     })),
   );
-  return importWorkspacePayload(name, files);
+  return importWorkspacePayload(name, payload);
 }
 
 export async function browseWorkspace(path = ''): Promise<BrowseResult> {
