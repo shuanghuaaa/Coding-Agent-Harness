@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, Fragment, type FormEvent, typ
 import { useWebSocket } from './hooks/useWebSocket';
 import { useSessions } from './hooks/useSessions';
 import { getSession } from './api/sessions';
-import { getWorkspaceFile, getWorkspaceRoot, listWorkspaceFiles, setWorkspaceRoot, clearWorkspaceRoot } from './api/workspace';
+import { getWorkspaceFile, getWorkspaceRoot, listWorkspaceFiles, setWorkspaceRoot, clearWorkspaceRoot, importWorkspaceFolder } from './api/workspace';
 import { rollbackCheckpoint } from './api/checkpoint';
 import { saveCredential, getCredentialStatus, deleteCredential } from './api/credentials';
 import { HITLModal } from './components/HITLModal';
@@ -248,6 +248,9 @@ export default function App() {
   const [rollbackDone, setRollbackDone] = useState(false);
   const [rollbackError, setRollbackError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [composerFocused, setComposerFocused] = useState(false);
   const [credentialStatus, setCredentialStatus] = useState<boolean | null>(null);
@@ -732,6 +735,25 @@ export default function App() {
     setFolderPickerOpen(true);
   };
 
+  const openLocalFolderImport = () => folderInputRef.current?.click();
+
+  const handleImportFolder = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (list.length === 0) return;
+    setImportBusy(true);
+    setImportMessage('正在上传到服务器…');
+    try {
+      const result = await importWorkspaceFolder(list);
+      await handleProjectSelected(result.path);
+      setImportMessage(`已导入 ${result.written} 个文件${result.skipped ? `，跳过 ${result.skipped} 个` : ''}`);
+    } catch (err) {
+      setImportMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
   const handleProjectSelected = async (path: string) => {
     try {
       const abs = await setWorkspaceRoot(path);
@@ -810,6 +832,16 @@ export default function App() {
           onReject={() => respondHITL(false)}
         />
       )}
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        hidden
+        // @ts-expect-error non-standard directory picker
+        webkitdirectory=""
+        directory=""
+        onChange={(e) => void handleImportFolder(e)}
+      />
       {folderPickerOpen && (
         <FolderPicker
           currentPath={workspacePath}
@@ -1162,9 +1194,9 @@ export default function App() {
               <div className="project-header">
                 <h1 className="project-title">项目与工作区</h1>
                 <div className="project-actions">
-                  <button type="button" className="header-btn" onClick={() => openFolderPicker('import')}>
+                  <button type="button" className="header-btn" onClick={openLocalFolderImport} disabled={importBusy}>
                     <FolderPlus size={14} />
-                    导入
+                    {importBusy ? '导入中…' : '导入'}
                   </button>
                   <button type="button" className="header-btn" onClick={() => openFolderPicker('workspace')}>
                     <FolderOpen size={14} />
@@ -1218,8 +1250,10 @@ export default function App() {
                     ))}
                   </ul>
                 </div>
+                {importMessage && <p className="project-desc" style={{ marginTop: 12 }}>{importMessage}</p>}
                 <p className="form-split-help">
-                  工具只在工作区内执行。绑定本地文件夹后，Agent 的读写、搜索和测试都会限制在该目录。
+                  「导入」从你电脑选文件夹，上传到服务器后再当作工作区（线上站点必须走这一步）。
+                  「打开」浏览的是服务器磁盘，只适合本机运行。工具只在工作区内执行。
                 </p>
               </div>
 

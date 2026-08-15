@@ -12,6 +12,7 @@ import { WorkspaceCheckpoint, type Checkpoint, type CheckpointDiff } from '../wo
 import { buildFileTree } from '../workspace/file-tree';
 import { readWorkspaceFile } from '../workspace/read-file';
 import { assertDirectory, browseDirectory } from '../workspace/browse';
+import { createImportRoot, writeImportedFiles } from '../workspace/import-upload';
 import { setWorkspaceRoot } from '../tools/file-tools';
 import { Orchestrator } from '../orchestration/orchestrator';
 import type { OrchestrationResult } from '../orchestration/orchestrator';
@@ -65,7 +66,7 @@ export class HarnessServer {
     this.server = http.createServer(this.app);
     this.wss = new WebSocketServer({ server: this.server });
 
-    this.app.use(express.json());
+    this.app.use(express.json({ limit: '20mb' }));
 
     this.app.get('/health', (_req, res) => {
       res.json({ status: 'ok' });
@@ -207,6 +208,24 @@ export class HarnessServer {
         const msg = String(err);
         const status = /not found|not a directory|cannot read/i.test(msg) ? 400 : 500;
         res.status(status).json({ error: msg });
+      }
+    });
+
+    this.app.post('/api/workspace/import', (req, res) => {
+      const name = typeof req.body?.name === 'string' ? req.body.name : 'project';
+      const rawFiles = Array.isArray(req.body?.files) ? req.body.files : [];
+      const files = rawFiles.map((f: { path?: unknown; content?: unknown }) => ({
+        path: typeof f?.path === 'string' ? f.path : '',
+        content: typeof f?.content === 'string' ? f.content : '',
+      }));
+      try {
+        const dest = createImportRoot(path.join(process.cwd(), 'data', 'imports'), name);
+        const result = writeImportedFiles(dest, files);
+        this.setWorkspace(dest);
+        res.json({ path: dest, written: result.written, skipped: result.skipped });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(400).json({ error: msg });
       }
     });
 

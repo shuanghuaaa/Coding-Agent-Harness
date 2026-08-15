@@ -286,6 +286,8 @@ GitHub Release：https://github.com/shuanghuaaa/Coding-Agent-Harness/releases#re
 
 在 Zeabur 控制台配置环境变量（如 `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`、`PORT`、`HARNESS_WORKSPACE` 等）。密钥只放在平台密钥/环境变量中，不进镜像层与 Git。
 
+**线上导入项目：** 公网站点上的「导入」会从访问者本机选文件夹并上传到容器的 `data/imports/`，再把该目录设为工作区。不要用「打开」去填 `D:\...`，那是服务器磁盘路径，容器里不存在。跳过 `node_modules` / `.git` / 二进制；单次大约不超过 400 个文本文件、共 15MB。
+
 ## 已知限制
 
 - **单用户**：当前版本不支持多用户并发任务
