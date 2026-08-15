@@ -10,7 +10,7 @@ import type { CredentialStore } from '../credentials/store';
 import type { WSMessage } from './types';
 import { WorkspaceCheckpoint, type Checkpoint, type CheckpointDiff } from '../workspace/checkpoint';
 import { buildFileTree } from '../workspace/file-tree';
-import { readWorkspaceFile } from '../workspace/read-file';
+import { readWorkspaceFile, writeWorkspaceFile } from '../workspace/read-file';
 import { assertDirectory, browseDirectory } from '../workspace/browse';
 import { createImportRoot, writeImportedFiles } from '../workspace/import-upload';
 import { setWorkspaceRoot } from '../tools/file-tools';
@@ -170,6 +170,22 @@ export class HarnessServer {
           : /not found/i.test(msg) ? 404
           : /too large|binary/i.test(msg) ? 415
           : 500;
+        res.status(status).json({ error: msg });
+      }
+    });
+
+    this.app.put('/api/workspace/file', (req, res) => {
+      const p = typeof req.body?.path === 'string' ? req.body.path : '';
+      const content = typeof req.body?.content === 'string' ? req.body.content : null;
+      if (!p || content === null) {
+        res.status(400).json({ error: 'missing path or content' });
+        return;
+      }
+      try {
+        res.json(writeWorkspaceFile(this.workspaceRoot, p, content));
+      } catch (err) {
+        const msg = String(err);
+        const status = /traversal|blocked/i.test(msg) ? 400 : 500;
         res.status(status).json({ error: msg });
       }
     });

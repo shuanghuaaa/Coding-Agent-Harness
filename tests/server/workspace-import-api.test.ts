@@ -69,6 +69,27 @@ describe('POST /api/workspace/import', () => {
     expect(root.path).toBe(body.path);
   });
 
+  it('writes a file back into the imported workspace', async () => {
+    const created = await fetch(`${base}/api/workspace/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'edit',
+        files: [{ path: 'edit/a.ts', content: 'const a = 1;\n' }],
+      }),
+    });
+    const body = (await created.json()) as { path: string };
+    imported.push(body.path);
+
+    const put = await fetch(`${base}/api/workspace/file`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: 'a.ts', content: 'const a = 2;\n' }),
+    });
+    expect(put.status).toBe(200);
+    expect(readFileSync(join(body.path, 'a.ts'), 'utf8')).toBe('const a = 2;\n');
+  });
+
   it('rejects an empty upload', async () => {
     const res = await fetch(`${base}/api/workspace/import`, {
       method: 'POST',

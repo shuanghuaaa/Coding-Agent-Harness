@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState, Fragment, type FormEvent, typ
 import { useWebSocket } from './hooks/useWebSocket';
 import { useSessions } from './hooks/useSessions';
 import { getSession } from './api/sessions';
-import { getWorkspaceFile, getWorkspaceRoot, listWorkspaceFiles, setWorkspaceRoot, clearWorkspaceRoot, importWorkspaceFolder } from './api/workspace';
+import { getWorkspaceFile, getWorkspaceRoot, listWorkspaceFiles, setWorkspaceRoot, clearWorkspaceRoot, importWorkspaceFolder, importWorkspacePayload, putWorkspaceFile } from './api/workspace';
+import { canWriteLocalFolder, pickLocalDirectory, readLocalDirectory, writeLocalFile } from './lib/local-fs';
 import { rollbackCheckpoint } from './api/checkpoint';
 import { saveCredential, getCredentialStatus, deleteCredential } from './api/credentials';
 import { HITLModal } from './components/HITLModal';
 import { DiffPanel } from './components/DiffPanel';
-import { FolderPicker } from './components/FolderPicker';
 import { TaskRoundList, groupIntoTaskRounds } from './components/TaskRoundList';
 import { loadProjects, upsertProject, removeProject, type SavedProject } from './lib/projects';
 import {
@@ -30,7 +30,6 @@ import {
   Trash2,
   Search,
   X,
-  FolderOpen,
   PanelLeftClose,
   PanelLeft,
   FolderPlus,
@@ -142,17 +141,30 @@ function statusBadge(status: string): { label: string; className: string } {
   return map[status] ?? { label: status, className: 'dim' };
 }
 
+const MAX_OPEN_FILES = 4;
+
+type OpenFile = { path: string; content: string; dirty: boolean };
+
+function flattenFilePaths(nodes: FileTreeNode[]): string[] {
+  const out: string[] = [];
+  for (const node of nodes) {
+    if (node.type === 'file') out.push(node.path);
+    if (node.children?.length) out.push(...flattenFilePaths(node.children));
+  }
+  return out;
+}
+
 function FileTreeNodeView({
   node,
   depth,
   modifiedPaths,
-  selectedPath,
+  openPaths,
   onFileClick,
 }: {
   node: FileTreeNode;
   depth: number;
   modifiedPaths: Set<string>;
-  selectedPath?: string | null;
+  openPaths: Set<string>;
   onFileClick: (path: string) => void;
 }) {
   const [open, setOpen] = useState(depth < 2);
@@ -169,7 +181,7 @@ function FileTreeNodeView({
   return (
     <div>
       <div
-        className={`file-tree-item ${modified ? 'modified' : ''} ${selectedPath === node.path ? 'selected' : ''}`}
+        className={`file-tree-item ${modified ? 'modified' : ''} ${openPaths.has(node.path) ? 'selected' : ''}`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={() => (isFolder ? setOpen(!open) : onFileClick(node.path))}
       >
@@ -183,7 +195,7 @@ function FileTreeNodeView({
           node={child}
           depth={depth + 1}
           modifiedPaths={modifiedPaths}
-          selectedPath={selectedPath}
+          openPaths={openPaths}
           onFileClick={onFileClick}
         />
       ))}
@@ -200,8 +212,12 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [activeSessionTask, setActiveSessionTask] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
+  const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [fileViewerError, setFileViewerError] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const localDirRef = useRef<FileSystemDirectoryHandle | null>(null);
+  const openFilesRef = useRef<OpenFile[]>([]);
+  openFilesRef.current = openFiles;
   const [maxRetries] = useState(2);
   const [selectedRoles, setSelectedRoles] = useState<AgentRole[]>(['coder']);
   const [model, setModel] = useState(MODELS[0]);
@@ -212,8 +228,6 @@ export default function App() {
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
   const [fileTreeError, setFileTreeError] = useState<string | null>(null);
   const [workspacePath, setWorkspacePath] = useState('');
-  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
-  const [folderPickerMode, setFolderPickerMode] = useState<'workspace' | 'import'>('workspace');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('harness-rail-collapsed') === '1');
   const [openContextPanels, setOpenContextPanels] = useState<Record<ContextPanelKey, boolean>>({
     files: true,
@@ -339,6 +353,16 @@ export default function App() {
       })
       .catch((err) => setFileTreeError(err instanceof Error ? err.message : String(err)));
   }, [page, checkpoint, workspacePath, projectOpen]);
+
+  useEffect(() => {
+    if (!result || !localDirRef.current) return;
+    void listWorkspaceFiles()
+      .then((tree) => {
+        setFileTree(tree);
+        return syncWorkspaceToLocal(tree);
+      })
+      .catch(() => undefined);
+  }, [result]);
 
   useEffect(() => {
     if (page !== 'settings') return;
@@ -595,7 +619,7 @@ export default function App() {
         clearCheckpoint();
         clearResult();
         clearOrchestratorStatus();
-        setSelectedFile(null);
+        setOpenFiles([]);
         setExpandedRounds({});
         setRollbackDone(false);
         setRollbackError(null);
@@ -663,7 +687,7 @@ export default function App() {
     clearResult();
     clearOrchestratorStatus();
     setRollbackMsg(null);
-    setSelectedFile(null);
+    setOpenFiles([]);
     setExpandedRounds({});
     setRollbackDone(false);
     setRollbackError(null);
@@ -687,12 +711,53 @@ export default function App() {
   const handleFileClick = async (path: string) => {
     try {
       const file = await getWorkspaceFile(path);
-      setSelectedFile({ path: file.path, content: file.content });
       setFileViewerError(null);
+      setOpenFiles((prev) => {
+        if (prev.some((f) => f.path === file.path)) return prev;
+        return [...prev, { path: file.path, content: file.content, dirty: false }].slice(-MAX_OPEN_FILES);
+      });
+      if (activeSessionId != null || activeSessionTask) {
+        setPage('session');
+      }
     } catch {
       setFileViewerError('无法加载文件');
-      setSelectedFile(null);
     }
+  };
+
+  const closeOpenFile = (path: string) => {
+    setOpenFiles((prev) => prev.filter((f) => f.path !== path));
+  };
+
+  const updateOpenFile = (path: string, content: string) => {
+    setOpenFiles((prev) => prev.map((f) => (f.path === path ? { ...f, content, dirty: true } : f)));
+  };
+
+  const persistFile = async (file: OpenFile) => {
+    await putWorkspaceFile(file.path, file.content);
+    if (localDirRef.current) {
+      await writeLocalFile(localDirRef.current, file.path, file.content);
+      setSyncMessage(`已写回本机：${file.path}`);
+    } else {
+      setSyncMessage('已保存到服务器。用 Chrome 的「导入」才能同步回本机文件夹');
+    }
+    setOpenFiles((prev) => prev.map((f) => (f.path === file.path ? { ...f, dirty: false } : f)));
+  };
+
+  const syncWorkspaceToLocal = async (tree: FileTreeNode[]) => {
+    if (!localDirRef.current) return;
+    const paths = new Set([...flattenFilePaths(tree), ...openFilesRef.current.map((f) => f.path)]);
+    for (const rel of paths) {
+      try {
+        const fresh = await getWorkspaceFile(rel);
+        await writeLocalFile(localDirRef.current, fresh.path, fresh.content);
+        setOpenFiles((prev) => prev.map((f) => (
+          f.path === fresh.path ? { path: fresh.path, content: fresh.content, dirty: false } : f
+        )));
+      } catch {
+        // skip unreadable / binary
+      }
+    }
+    setSyncMessage('Agent 改动已同步到本机文件夹');
   };
 
   const handleAttach = () => fileInputRef.current?.click();
@@ -730,12 +795,30 @@ export default function App() {
     }
   };
 
-  const openFolderPicker = (mode: 'workspace' | 'import' = 'workspace') => {
-    setFolderPickerMode(mode);
-    setFolderPickerOpen(true);
+  const openLocalFolderImport = async () => {
+    if (canWriteLocalFolder()) {
+      try {
+        const handle = await pickLocalDirectory();
+        if (!handle) return;
+        setImportBusy(true);
+        setImportMessage('正在上传到服务器…');
+        const files = await readLocalDirectory(handle);
+        if (files.length === 0) throw new Error('没有可上传的文本文件');
+        const result = await importWorkspacePayload(handle.name, files);
+        localDirRef.current = handle;
+        await handleProjectSelected(result.path);
+        setImportMessage(`已导入 ${result.written} 个文件。之后的修改会写回本机「${handle.name}」`);
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setImportMessage(err instanceof Error ? err.message : String(err));
+        return;
+      } finally {
+        setImportBusy(false);
+      }
+    }
+    folderInputRef.current?.click();
   };
-
-  const openLocalFolderImport = () => folderInputRef.current?.click();
 
   const handleImportFolder = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = Array.from(e.target.files ?? []);
@@ -744,9 +827,10 @@ export default function App() {
     setImportBusy(true);
     setImportMessage('正在上传到服务器…');
     try {
+      localDirRef.current = null;
       const result = await importWorkspaceFolder(list);
       await handleProjectSelected(result.path);
-      setImportMessage(`已导入 ${result.written} 个文件${result.skipped ? `，跳过 ${result.skipped} 个` : ''}`);
+      setImportMessage(`已导入 ${result.written} 个文件。当前浏览器不能写回本机，请用 Chrome / Edge 点「导入」`);
     } catch (err) {
       setImportMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -758,7 +842,7 @@ export default function App() {
     try {
       const abs = await setWorkspaceRoot(path);
       setWorkspacePath(abs);
-      setSelectedFile(null);
+      setOpenFiles([]);
       setProjectOpen(true);
       localStorage.setItem('harness-workspace', abs);
       setProjects(upsertProject(abs));
@@ -773,9 +857,10 @@ export default function App() {
       await clearWorkspaceRoot();
       const root = await getWorkspaceRoot();
       setWorkspacePath(root);
-      setSelectedFile(null);
+      setOpenFiles([]);
       setFileTree([]);
       setProjectOpen(false);
+      localDirRef.current = null;
       localStorage.removeItem('harness-workspace');
       clearCheckpoint();
     } catch (err) {
@@ -784,6 +869,7 @@ export default function App() {
   };
 
   const handleOpenSavedProject = async (proj: SavedProject) => {
+    localDirRef.current = null;
     await handleProjectSelected(proj.path);
   };
 
@@ -842,18 +928,6 @@ export default function App() {
         directory=""
         onChange={(e) => void handleImportFolder(e)}
       />
-      {folderPickerOpen && (
-        <FolderPicker
-          currentPath={workspacePath}
-          title={folderPickerMode === 'import' ? '导入项目文件夹' : '打开项目文件夹'}
-          confirmLabel={folderPickerMode === 'import' ? '导入此文件夹' : '打开此文件夹'}
-          onClose={() => setFolderPickerOpen(false)}
-          onSelected={(path) => {
-            void handleProjectSelected(path);
-          }}
-        />
-      )}
-
       <aside className={`app-rail ${sidebarCollapsed ? 'collapsed' : ''}`} aria-label="主导航">
         <div className="app-rail-head">
           <button
@@ -975,7 +1049,51 @@ export default function App() {
           Coding Agent Harness
         </button>
       <div className="app-body no-sidebar">
-        <main className="main-area">
+        <main className={`main-area ${openFiles.length > 0 ? 'with-file-pane' : ''}`}>
+          {openFiles.length > 0 && (
+            <div className="file-panes-wrap">
+            {syncMessage && <div className="file-sync-banner">{syncMessage}</div>}
+            <div className="file-panes" aria-label="已打开的文件">
+              {openFiles.map((file) => (
+                <section key={file.path} className="file-pane">
+                  <div className="file-pane-head">
+                    <span className="file-pane-path" title={file.path}>
+                      {file.path}{file.dirty ? ' ·' : ''}
+                    </span>
+                    <button
+                      type="button"
+                      className="file-viewer-close"
+                      onClick={() => closeOpenFile(file.path)}
+                      aria-label={`关闭 ${file.path}`}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <textarea
+                    className="file-pane-content file-pane-editor"
+                    value={file.content}
+                    spellCheck={false}
+                    onChange={(e) => updateOpenFile(file.path, e.target.value)}
+                    onBlur={() => {
+                      if (file.dirty) void persistFile(file).catch((err) => {
+                        setSyncMessage(err instanceof Error ? err.message : String(err));
+                      });
+                    }}
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                        e.preventDefault();
+                        void persistFile({ ...file, content: (e.target as HTMLTextAreaElement).value }).catch((err) => {
+                          setSyncMessage(err instanceof Error ? err.message : String(err));
+                        });
+                      }
+                    }}
+                  />
+                </section>
+              ))}
+            </div>
+            </div>
+          )}
+          <div className="main-page">
           {showHome && (
             <div className="page-home">
               <div className="home-ask">
@@ -1194,13 +1312,9 @@ export default function App() {
               <div className="project-header">
                 <h1 className="project-title">项目与工作区</h1>
                 <div className="project-actions">
-                  <button type="button" className="header-btn" onClick={openLocalFolderImport} disabled={importBusy}>
+                  <button type="button" className="header-btn" onClick={() => void openLocalFolderImport()} disabled={importBusy}>
                     <FolderPlus size={14} />
                     {importBusy ? '导入中…' : '导入'}
-                  </button>
-                  <button type="button" className="header-btn" onClick={() => openFolderPicker('workspace')}>
-                    <FolderOpen size={14} />
-                    打开
                   </button>
                 </div>
               </div>
@@ -1210,10 +1324,6 @@ export default function App() {
                   <div className="stat-label">当前工作区</div>
                   <p className="project-desc">{projectOpen ? (workspacePath || '未选择') : '尚未打开项目'}</p>
                   <div className="project-actions-row" style={{ marginTop: 12 }}>
-                    <button type="button" className="header-btn" onClick={() => openFolderPicker('workspace')}>
-                      <FolderOpen size={12} />
-                      绑定文件夹
-                    </button>
                     <button type="button" className="header-btn" onClick={() => void handleCloseProject()} disabled={!projectOpen}>
                       <FolderX size={12} />
                       解除
@@ -1251,9 +1361,9 @@ export default function App() {
                   </ul>
                 </div>
                 {importMessage && <p className="project-desc" style={{ marginTop: 12 }}>{importMessage}</p>}
+                {syncMessage && <p className="project-desc" style={{ marginTop: 8 }}>{syncMessage}</p>}
                 <p className="form-split-help">
-                  「导入」从你电脑选文件夹，上传到服务器后再当作工作区（线上站点必须走这一步）。
-                  「打开」浏览的是服务器磁盘，只适合本机运行。工具只在工作区内执行。
+                  「导入」从你电脑选文件夹，上传到服务器后再当作工作区。用 Chrome / Edge 导入后，页面和 Agent 的修改会写回该本机目录。
                 </p>
               </div>
 
@@ -1483,6 +1593,7 @@ export default function App() {
               </div>
             </div>
           )}
+          </div>
         </main>
       </div>
         </div>
@@ -1576,14 +1687,6 @@ export default function App() {
                             <button
                               type="button"
                               className="header-btn"
-                              onClick={() => openFolderPicker('workspace')}
-                              title="打开文件夹"
-                            >
-                              <FolderOpen size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className="header-btn"
                               onClick={() => void handleCloseProject()}
                               disabled={!projectOpen}
                               title="关闭当前项目"
@@ -1593,22 +1696,7 @@ export default function App() {
                           </div>
                           <div className="file-tree-scroll">
                             {!projectOpen ? (
-                              <div className="sessions-empty">请从左侧导入或打开项目</div>
-                            ) : selectedFile ? (
-                              <div className="file-viewer">
-                                <div className="file-viewer-head">
-                                  <span className="file-viewer-path" title={selectedFile.path}>{selectedFile.path}</span>
-                                  <button
-                                    type="button"
-                                    className="file-viewer-close"
-                                    onClick={() => setSelectedFile(null)}
-                                    aria-label="关闭文件查看器"
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                </div>
-                                <pre className="file-viewer-content">{selectedFile.content}</pre>
-                              </div>
+                              <div className="sessions-empty">请从项目页导入文件夹</div>
                             ) : (
                               <>
                                 {fileTreeError && <div className="sessions-error">{fileTreeError}</div>}
@@ -1627,7 +1715,7 @@ export default function App() {
                                       node={node}
                                       depth={0}
                                       modifiedPaths={modifiedPaths}
-                                      selectedPath={null}
+                                      openPaths={new Set(openFiles.map((f) => f.path))}
                                       onFileClick={(path) => void handleFileClick(path)}
                                     />
                                   ))}

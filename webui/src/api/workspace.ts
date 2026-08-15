@@ -25,6 +25,41 @@ export async function getWorkspaceFile(path: string): Promise<WorkspaceFile> {
   return res.json() as Promise<WorkspaceFile>;
 }
 
+export interface ImportWorkspaceResult {
+  path: string;
+  written: number;
+  skipped: number;
+}
+
+export async function putWorkspaceFile(path: string, content: string): Promise<{ path: string; size: number }> {
+  const res = await fetch('/api/workspace/file', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, content }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<{ path: string; size: number }>;
+}
+
+export async function importWorkspacePayload(
+  name: string,
+  files: Array<{ path: string; content: string }>,
+): Promise<ImportWorkspaceResult> {
+  const res = await fetch('/api/workspace/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, files }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<ImportWorkspaceResult>;
+}
+
 export async function getWorkspaceRoot(): Promise<string> {
   const res = await fetch('/api/workspace/root');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -60,12 +95,6 @@ export async function clearWorkspaceRoot(): Promise<string> {
   return body.path;
 }
 
-export interface ImportWorkspaceResult {
-  path: string;
-  written: number;
-  skipped: number;
-}
-
 const SKIP_UPLOAD = /(?:^|\/)(node_modules|\.git|dist|coverage|\.next|\.turbo|__pycache__|\.venv|venv)(?:\/|$)/;
 const SKIP_BINARY = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|woff2?|exe|dll|so|dylib|mp4|mp3|wasm)$/i;
 const MAX_UPLOAD_FILE = 512 * 1024;
@@ -85,25 +114,13 @@ export async function importWorkspaceFolder(files: File[]): Promise<ImportWorksp
   }
   const firstRel = (picked[0].webkitRelativePath || picked[0].name).replace(/\\/g, '/');
   const name = firstRel.split('/')[0] || 'project';
-  const payload = {
-    name,
-    files: await Promise.all(
-      picked.map(async (file) => ({
-        path: (file.webkitRelativePath || file.name).replace(/\\/g, '/'),
-        content: await file.text(),
-      })),
-    ),
-  };
-  const res = await fetch('/api/workspace/import', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<ImportWorkspaceResult>;
+  const files = await Promise.all(
+    picked.map(async (file) => ({
+      path: (file.webkitRelativePath || file.name).replace(/\\/g, '/'),
+      content: await file.text(),
+    })),
+  );
+  return importWorkspacePayload(name, files);
 }
 
 export async function browseWorkspace(path = ''): Promise<BrowseResult> {

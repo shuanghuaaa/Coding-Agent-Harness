@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readWorkspaceFile } from '../../src/workspace/read-file';
+import { readWorkspaceFile, writeWorkspaceFile } from '../../src/workspace/read-file';
 
 describe('readWorkspaceFile', () => {
   let root: string;
@@ -36,5 +36,23 @@ describe('readWorkspaceFile', () => {
   it('rejects binary files', () => {
     writeFileSync(join(root, 'bin.dat'), Buffer.from([0x48, 0x00, 0x69]));
     expect(() => readWorkspaceFile(root, 'bin.dat')).toThrow(/binary/i);
+  });
+});
+
+describe('writeWorkspaceFile', () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'ws-write-'));
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it('writes a nested text file inside the workspace', () => {
+    const r = writeWorkspaceFile(root, 'src/hello.ts', 'export const n = 1;\n');
+    expect(r.path).toBe('src/hello.ts');
+    expect(readFileSync(join(root, 'src/hello.ts'), 'utf8')).toBe('export const n = 1;\n');
+  });
+
+  it('blocks path traversal', () => {
+    expect(() => writeWorkspaceFile(root, '../secret.txt', 'nope')).toThrow(/traversal|blocked/i);
   });
 });
