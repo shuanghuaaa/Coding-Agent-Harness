@@ -355,14 +355,21 @@ textarea {
 }
 
 .editor-column {
-  flex: 1 1 38%;
-  min-width: 280px;
-  max-width: 52%;
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 240px;
+  max-width: 70vw;
   min-height: 0;
   height: 100vh;
   padding: 16px 8px 16px 0;
   display: flex;
   flex-direction: column;
+}
+
+.editor-col-handle {
+  top: 16px;
+  right: 0;
+  height: calc(100% - 32px);
 }
 
 .app-canvas {
@@ -1527,7 +1534,7 @@ body.is-col-resizing .col-resize-handle {
   background: var(--bg-panel);
   flex-shrink: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   z-index: 5;
 }
 
@@ -2360,7 +2367,7 @@ body.is-col-resizing .col-resize-handle {
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
   container-type: inline-size;
   container-name: composer;
   transition: min-height 200ms var(--ease-out), border-color 120ms var(--ease-out), box-shadow 120ms var(--ease-out);
@@ -2434,7 +2441,7 @@ body.is-col-resizing .col-resize-handle {
   flex-shrink: 1;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .model-select {
@@ -2483,7 +2490,7 @@ body.is-col-resizing .col-resize-handle {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   min-width: 140px;
-  z-index: 100;
+  z-index: 200;
 }
 
 .model-menu li button {

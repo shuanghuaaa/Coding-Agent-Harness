@@ -245,6 +245,7 @@ export default function App() {
   } | null>(null);
   const colDragRef = useRef<
     | { kind: 'context'; startX: number; startW: number }
+    | { kind: 'editor'; startX: number; startW: number }
     | null
   >(null);
   const [contextBodyWidth, setContextBodyWidth] = useState(() => {
@@ -253,6 +254,12 @@ export default function App() {
   });
   const contextBodyWidthRef = useRef(contextBodyWidth);
   contextBodyWidthRef.current = contextBodyWidth;
+  const [editorWidth, setEditorWidth] = useState(() => {
+    const n = Number(localStorage.getItem('harness-editor-w'));
+    return Number.isFinite(n) && n >= 240 && n <= 900 ? n : 420;
+  });
+  const editorWidthRef = useRef(editorWidth);
+  editorWidthRef.current = editorWidth;
   const [projectsPanelOpen, setProjectsPanelOpen] = useState(false);
   const [projects, setProjects] = useState<SavedProject[]>(() => loadProjects());
   const [projectOpen, setProjectOpen] = useState(() => Boolean(localStorage.getItem('harness-workspace')));
@@ -401,9 +408,12 @@ export default function App() {
 
       const colDrag = colDragRef.current;
       if (colDrag?.kind === 'context') {
-        // Dragging the left edge of the right panel: moving left increases width.
         const next = Math.min(520, Math.max(200, colDrag.startW + (colDrag.startX - e.clientX)));
         setContextBodyWidth(next);
+      }
+      if (colDrag?.kind === 'editor') {
+        const next = Math.min(900, Math.max(240, colDrag.startW + (e.clientX - colDrag.startX)));
+        setEditorWidth(next);
       }
     };
     const onUp = () => {
@@ -411,8 +421,14 @@ export default function App() {
         resizeDragRef.current = null;
       }
       if (colDragRef.current) {
+        const kind = colDragRef.current.kind;
         colDragRef.current = null;
-        localStorage.setItem('harness-context-w', String(contextBodyWidthRef.current));
+        if (kind === 'context') {
+          localStorage.setItem('harness-context-w', String(contextBodyWidthRef.current));
+        }
+        if (kind === 'editor') {
+          localStorage.setItem('harness-editor-w', String(editorWidthRef.current));
+        }
       }
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
@@ -433,6 +449,14 @@ export default function App() {
     document.body.style.userSelect = 'none';
     document.body.classList.add('is-col-resizing');
   }, [contextBodyWidth]);
+
+  const startEditorColResize = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    colDragRef.current = { kind: 'editor', startX: e.clientX, startW: editorWidth };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.body.classList.add('is-col-resizing');
+  }, [editorWidth]);
 
   const scrollChatToBottom = useCallback((force = false) => {
     const el = chatMessagesRef.current;
@@ -640,9 +664,10 @@ export default function App() {
   };
 
   const openRoleSession = (role: AgentRole) => {
+    const meta = ORCHESTRATOR_ROLES.find((a) => a.key === role);
     setSelectedRoles([role]);
     setActiveSessionId(null);
-    setActiveSessionTask(null);
+    setActiveSessionTask(meta?.name ?? role);
     seedChat([]);
     clearCheckpoint();
     clearResult();
@@ -1044,7 +1069,18 @@ export default function App() {
       </aside>
 
       {openFiles.length > 0 && (
-        <aside className="editor-column" aria-label="已打开的文件">
+        <aside
+          className="editor-column"
+          aria-label="已打开的文件"
+          style={{ width: editorWidth, flex: `0 0 ${editorWidth}px` }}
+        >
+          <div
+            className="col-resize-handle editor-col-handle"
+            onMouseDown={startEditorColResize}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整文件栏宽度"
+          />
           <div className="file-panes-wrap">
             {syncMessage && <div className="file-sync-banner">{syncMessage}</div>}
             <div className="file-panes">
