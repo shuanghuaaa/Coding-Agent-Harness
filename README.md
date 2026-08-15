@@ -9,7 +9,7 @@ Coding Agent Harness 是一个以 **反馈闭环** 为核心贡献的编码智�
 
 | 项 | 链接 |
 |----|------|
-| GitHub Release | https://github.com/shuanghuaaa/Coding-Agent-Harness/releases#release-v1.0.0 |
+| GitHub Release | https://github.com/shuanghuaaa/Coding-Agent-Harness/releases#release-v1.1.0 |
 | 线上 WebUI | https://coding-agent-harness.zeabur.app |
 | 健康检查 | https://coding-agent-harness.zeabur.app/health |
 
@@ -277,7 +277,7 @@ npm test
 
 健康检查：https://coding-agent-harness.zeabur.app/health （正常时返回 `{"status":"ok"}`）
 
-GitHub Release：https://github.com/shuanghuaaa/Coding-Agent-Harness/releases#release-v1.0.0
+GitHub Release：https://github.com/shuanghuaaa/Coding-Agent-Harness/releases#release-v1.1.0
 
 **部署架构：** GitHub 仓库 `master` → Zeabur 拉取并 Docker 构建 → 容器监听 `PORT` → 公网域名反代到 WebUI（Express 静态资源 + WebSocket / REST）。
 
