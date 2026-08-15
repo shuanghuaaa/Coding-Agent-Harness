@@ -1043,17 +1043,11 @@ export default function App() {
         </div>
       </aside>
 
-      <div className="app-canvas has-context-rail">
-        <div className="app-stage">
-        <button type="button" className="app-page-brand" onClick={openHome}>
-          Coding Agent Harness
-        </button>
-      <div className="app-body no-sidebar">
-        <main className={`main-area ${openFiles.length > 0 ? 'with-file-pane' : ''}`}>
-          {openFiles.length > 0 && (
-            <div className="file-panes-wrap">
+      {openFiles.length > 0 && (
+        <aside className="editor-column" aria-label="已打开的文件">
+          <div className="file-panes-wrap">
             {syncMessage && <div className="file-sync-banner">{syncMessage}</div>}
-            <div className="file-panes" aria-label="已打开的文件">
+            <div className="file-panes">
               {openFiles.map((file) => (
                 <section key={file.path} className="file-pane">
                   <div className="file-pane-head">
@@ -1091,8 +1085,17 @@ export default function App() {
                 </section>
               ))}
             </div>
-            </div>
-          )}
+          </div>
+        </aside>
+      )}
+
+      <div className="app-canvas has-context-rail">
+        <div className="app-stage">
+        <button type="button" className="app-page-brand" onClick={openHome}>
+          Coding Agent Harness
+        </button>
+      <div className="app-body no-sidebar">
+        <main className="main-area">
           <div className="main-page">
           {showHome && (
             <div className="page-home">
