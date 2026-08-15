@@ -66,7 +66,7 @@ export class HarnessServer {
     this.server = http.createServer(this.app);
     this.wss = new WebSocketServer({ server: this.server });
 
-    this.app.use(express.json({ limit: '20mb' }));
+    this.app.use(express.json({ limit: '50mb' }));
 
     this.app.get('/health', (_req, res) => {
       res.json({ status: 'ok' });

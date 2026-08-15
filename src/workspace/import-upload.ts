@@ -6,17 +6,22 @@ const SKIP_SEGMENTS = new Set([
   'node_modules',
   '.git',
   'dist',
+  'build',
+  'out',
   'coverage',
   '.next',
   '.turbo',
+  '.cache',
+  '.output',
   '__pycache__',
   '.venv',
   'venv',
+  'target',
 ]);
 
-const MAX_FILES = 400;
+const MAX_FILES = 5000;
 const MAX_FILE_BYTES = 512 * 1024;
-const MAX_TOTAL_BYTES = 15 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
 
 export interface ImportFile {
   path: string;
@@ -51,9 +56,6 @@ export function writeImportedFiles(destRoot: string, files: ImportFile[]): Impor
   if (!Array.isArray(files) || files.length === 0) {
     throw new Error('No files to import');
   }
-  if (files.length > MAX_FILES) {
-    throw new Error(`Too many files (max ${MAX_FILES})`);
-  }
 
   const prepared: Array<{ rel: string; buf: Buffer }> = [];
   let skipped = 0;
@@ -75,6 +77,9 @@ export function writeImportedFiles(destRoot: string, files: ImportFile[]): Impor
       throw new Error('Import too large');
     }
     prepared.push({ rel: safe, buf });
+    if (prepared.length > MAX_FILES) {
+      throw new Error(`Too many files (max ${MAX_FILES})`);
+    }
   }
 
   if (prepared.length === 0) {

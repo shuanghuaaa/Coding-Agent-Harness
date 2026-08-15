@@ -95,7 +95,7 @@ export async function clearWorkspaceRoot(): Promise<string> {
   return body.path;
 }
 
-const SKIP_UPLOAD = /(?:^|\/)(node_modules|\.git|dist|coverage|\.next|\.turbo|__pycache__|\.venv|venv)(?:\/|$)/;
+const SKIP_UPLOAD = /(?:^|\/)(node_modules|\.git|dist|build|out|coverage|\.next|\.turbo|\.cache|\.output|__pycache__|\.venv|venv|target)(?:\/|$)/;
 const SKIP_BINARY = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|woff2?|exe|dll|so|dylib|mp4|mp3|wasm)$/i;
 const MAX_UPLOAD_FILE = 512 * 1024;
 

@@ -1,4 +1,4 @@
-const SKIP_DIR = new Set(['node_modules', '.git', 'dist', 'coverage', '.next', '.turbo', '__pycache__', '.venv', 'venv']);
+const SKIP_DIR = new Set(['node_modules', '.git', 'dist', 'build', 'out', 'coverage', '.next', '.turbo', '.cache', '.output', '__pycache__', '.venv', 'venv', 'target']);
 const SKIP_FILE = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|woff2?|exe|dll|so|dylib|mp4|mp3|wasm)$/i;
 const MAX_FILE = 512 * 1024;
 

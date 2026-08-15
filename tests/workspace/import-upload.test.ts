@@ -53,6 +53,15 @@ describe('writeImportedFiles', () => {
   it('rejects empty file list', () => {
     expect(() => writeImportedFiles(dest, [])).toThrow(/no files/i);
   });
+
+  it('accepts more than 400 source files', () => {
+    const files = Array.from({ length: 500 }, (_, i) => ({
+      path: `app/f${i}.txt`,
+      content: `n=${i}`,
+    }));
+    const result = writeImportedFiles(dest, files);
+    expect(result.written).toBe(500);
+  });
 });
 
 describe('createImportRoot', () => {
