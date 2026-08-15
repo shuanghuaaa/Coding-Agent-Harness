@@ -170,11 +170,12 @@ Coding-Agent-Harness/
 │   ├── config/         # 配置加载器（.rules）
 │   ├── credentials/    # 凭证存储（AES 文件、Windows CM）
 │   ├── server/         # HTTP + WebSocket 服务器、会话持久化
-│   ├── workspace/      # 工作区浏览、读文件、检查点
+│   ├── workspace/      # 工作区导入、读写文件、浏览、检查点
 │   └── utils/          # 日志工具
 ├── webui/              # React + Vite 前端（CaseAI 浅色操作台）
 │   └── src/
 │       ├── api/        # sessions / credentials / workspace / checkpoint
+│       ├── lib/        # 本机文件夹授权与写回（File System Access）
 │       ├── components/ # FeedbackTrail, TaskRoundList, TestFileSnippet, HITLModal 等
 │       └── hooks/      # WebSocket（自动重连）与会话列表
 ├── tests/              # 约 41 个测试文件、约 185 个用例（Mock LLM，无网络）
@@ -243,8 +244,10 @@ CaseAI Match 风格的浅色 SaaS 操作台（近白画布 + 炭黑主按钮 + I
 |------|------|
 | Home | 问候 + 主输入 + 角色选择 |
 | Session | 对话流、轮次卡、反馈轨迹、Composer、角色下拉 |
-| Projects | 工作区绑定；角色卡片进入会话 |
+| Projects | 「导入」本机文件夹到服务器工作区；角色卡片进入会话 |
 | Settings | API Key、模型与连接信息 |
+
+布局（打开文件后）：左导航 | 文件编辑栏（可并列多文件） | 对话主舞台 | 右侧项目文件树。目录栏只列文件，内容在独立编辑栏，互不占用。
 
 设计合同见 `webui/DESIGN.md`；规格见 `docs/superpowers/specs/2026-08-13-caseai-webui-redesign.md`。
 
@@ -286,15 +289,17 @@ GitHub Release：https://github.com/shuanghuaaa/Coding-Agent-Harness/releases#re
 
 在 Zeabur 控制台配置环境变量（如 `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`、`PORT`、`HARNESS_WORKSPACE` 等）。密钥只放在平台密钥/环境变量中，不进镜像层与 Git。
 
-**线上导入项目：** 用 Chrome / Edge 点「导入」，授权本机文件夹后上传到容器 `data/imports/`。之后在页面里改文件或 Agent 写文件，会尝试写回你授权的那个本机目录。跳过 `node_modules` / `.git` / 二进制；单次大约不超过 5000 个文本文件、共 50MB。刷新页面后需重新导入才能继续同步。
+**线上导入项目：** 项目页只有「导入」，没有浏览服务器磁盘的「打开」。用 Chrome / Edge 点「导入」，授权本机文件夹后上传到容器 `data/imports/`，再设为工作区。之后在编辑栏改文件或 Agent 写文件，会尝试写回该本机目录。跳过 `node_modules` / `.git` / `dist` / `build` 等与二进制；单次大约不超过 5000 个文本文件、共 50MB。刷新页面后浏览器授权会丢失，需重新导入才能继续同步。
 
 ## 已知限制
 
-- **单用户**：当前版本不支持多用户并发任务
+- **单用户**：当前版本不支持多用户并发任务；工作区是全站一份，后导入的会替换当前工作区
 - **无任务队列**：同一时间只能运行一个 Agent 任务
 - **公网暴露面**：当前版本不设应用层访问令牌，生产环境建议在网关加认证
 - **跨境访问：** 线上实例位于德国节点，国内部分网络可能无法稳定打开公网 URL，可用 `/health` 探测或按 README 本地复现
-- **文件工具沙箱**：依赖工作区根目录设置，需确保 `HARNESS_WORKSPACE` 正确配置
+- **本机同步：** 写回依赖 Chrome / Edge 的文件夹授权；刷新后需重新导入。浏览器无法在未授权时直接改访问者磁盘上的原文件
+- **导入体积：** 跳过依赖与构建产物；单文件约 512KB 上限；超大二进制资源不会上传
+- **文件工具沙箱**：工具只在当前工作区内执行
 - **平台兼容**：Windows 和 macOS/Linux 路径分隔符均支持，但部分 shell 命令可能因操作系统而异
 
 ## 文档索引

@@ -172,6 +172,7 @@
 ┌──────────────────────────────────────────────────────────┐
 │           WebUI (React 18 + Vite · CaseAI 浅色操作台)      │
 │  Home / Session / Projects / Settings                     │
+│  左导航 · 文件编辑栏 · 对话 · 右侧文件树                   │
 │  轮次卡 · FeedbackTrail · 角色多选 · HITLModal            │
 └──────────────────────────┬───────────────────────────────┘
                            │ WebSocket (ws) + REST
@@ -200,6 +201,20 @@
 | 会话协议 | 单角色：`task` + 可选 `agentRole`；多角色：`orchestrate` + `roles: AgentRole[]` |
 | UI | 会话 Composer 旁角色下拉（≥1）；项目页角色卡片进入会话并预勾选 |
 | 实现 | `src/orchestration/`；测试 `tests/orchestration/` |
+
+### 5.1.2 工作区导入与文件编辑
+
+公网站点无法浏览访问者本机磁盘。Projects 页仅提供「导入」：
+
+| 项 | 行为 |
+|----|------|
+| 导入 | Chrome / Edge 授权本机文件夹 → `POST /api/workspace/import` 写入 `data/imports/` → 设为工作区 |
+| 编辑栏 | 点击右侧文件树中的文件，在左导航与对话之间另开一栏；可并列最多 4 个；目录栏始终显示树，不被预览占用 |
+| 写回 | `PUT /api/workspace/file` 写入服务器副本；若仍持有文件夹授权，再写回本机。Agent 任务结束后同样尝试同步 |
+| 上限 | 约 5000 个文本文件、共 50MB；跳过 `node_modules` / `.git` / `dist` / `build` 等与二进制 |
+| 不做 | 浏览服务器磁盘的「打开」；未授权时改访问者原盘文件 |
+
+测试：`tests/workspace/import-upload.test.ts`、`tests/server/workspace-import-api.test.ts`、`tests/workspace/read-file.test.ts`（含写入）。
 
 ### 5.2 数据流（以"写一个 add 函数"为例）
 
@@ -374,7 +389,7 @@ interface HITLResponse {
 ### 7.3 目标平台
 
 - Linux x86_64（Docker 容器）
-- 浏览器访问 WebUI（Chrome / Edge）
+- 浏览器访问 WebUI（Chrome / Edge；导入并写回本机需要 File System Access）
 - 开发环境：Windows / macOS / Linux（Node.js 20+）
 
 ### 7.4 Key 在目标机器的安全配置方式
@@ -563,8 +578,8 @@ class FeedbackInjector {
 |----|------|------|
 | 设计系统 | **CaseAI Match** | `#F7F7F8` 画布、`#FFFFFF` 主舞台、炭黑 `#18181B` 主按钮；无彩色主色 |
 | 设计合同 | `webui/DESIGN.md` | 色板、字体、布局、组件与动效 token |
-| 规格 | `docs/superpowers/specs/2026-08-13-caseai-webui-redesign.md` | IA：Home / Session / Projects / Settings |
-| 实现落点 | `webui/src/App.tsx` + `styles.css` + components | 轮次卡、FeedbackTrail、角色下拉、HITL |
+| 规格 | `docs/superpowers/specs/2026-08-13-caseai-webui-redesign.md` | IA：Home / Session / Projects / Settings；现行布局见 `webui/DESIGN.md` |
+| 实现落点 | `webui/src/App.tsx` + `styles.css` + components | 轮次卡、FeedbackTrail、角色下拉、HITL、文件编辑栏 |
 
 **不做：** 重型 UI 组件库、营销落地页、复活整套深色 ControlDeck。Harness 内核可在无 UI 下独立测试。
 
@@ -584,6 +599,7 @@ class FeedbackInjector {
 | 6 | Docker 分发 | `docker build && docker run` 启动，`curl localhost:3000/health` 返回 200 | CI 中 `docker build` 成功 |
 | 7 | 线上部署 | 提供公网 URL，WebUI 正常运行 | 访问 https://coding-agent-harness.zeabur.app（实例位于德国节点，国内网络不稳定时以 `/health` 或本地 Docker 复现，见 README「云部署」） |
 | 8 | 机制演示（§A.6） | 在 mock LLM 下确定性复现：① 护栏拦截一个危险动作；② 注入失败 → 反馈闭环使 agent 改变行为；③ 重点维度（反馈闭环）的确定性行为 | `tests/integration/harness-demo.test.ts` 包含三个测试用例，mock LLM 下每次结果一致 |
+| 9 | 工作区导入 | 本机文件夹可上传为工作区；文件可在独立编辑栏打开；写入有单测 | `tests/workspace/import-upload.test.ts`、`tests/server/workspace-import-api.test.ts` 通过 |
 
 ---
 
@@ -601,5 +617,5 @@ class FeedbackInjector {
 
 ---
 
-> **SPEC 版本**：v2.2（同步反馈闭环加深、多角色编排、CaseAI WebUI；更新架构图与 §10.1）
-> **最后更新**：2026-08-07
+> **SPEC 版本**：v2.3（工作区导入、文件编辑栏、本机写回）
+> **最后更新**：2026-08-15

@@ -134,6 +134,13 @@ T1 → T2 → T3 → T4 → T5..T7 → T8 / T9..T10（可并行）→ T11 → T1
 - **目标：** Zeabur URL、删无用文件、补齐 `PLAN`/`SPEC_PROCESS`/`AGENT_LOG`/`REFLECTION`
 - **代表 commit：** `1b28692` 及后续 docs commits
 
+### Task B6: 线上工作区导入与文件编辑栏 — [x]
+
+- **目标：** 本机文件夹上传为工作区；去掉「打开」服务器磁盘；多文件并列编辑；尝试写回本机
+- **文件：** `src/workspace/import-upload.ts`、`src/server/http-server.ts`、`webui/src/App.tsx`、`webui/src/lib/local-fs.ts`
+- **验证：** `tests/workspace/import-upload.test.ts`、`tests/server/workspace-import-api.test.ts`
+- **代表 commit：** `bd886fd`、`8ecd89f`、`0fe8db2`、`1f03fe9`
+
 ---
 
 ## 并行提示（历史）

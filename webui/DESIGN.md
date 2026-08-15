@@ -38,12 +38,13 @@ Brand contract for the Coding Agent Harness WebUI (CaseAI Match, 2026-08).
 
 ## Layout
 
-窄导航轨始终在最左：Home / Sessions / Projects / Settings（可收成仅图标）。
+窄导航轨始终在最左：Home / 新建任务 / 会话 / 项目 / 设置（可收成仅图标）。
 
 1. **Home** — Caveat 问候 + 主输入 + 角色选择  
-2. **Session** — 左会话列表、中对话流 + Composer、右 Context（Files / Metrics / Checkpoint）  
-3. **Projects** — 工作区绑定；三角色卡片点击进入会话（无独立编排表单）  
-4. **Settings** — API Key、模型、连接信息  
+2. **Session** — 对话流 + Composer；右侧 Context（文件树 / Metrics / Checkpoint）始终保留目录  
+3. **文件编辑栏** — 点文件后出现在左导航右侧、对话左侧；可并列最多 4 个；不替换文件树  
+4. **Projects** — 「导入」本机文件夹；三角色卡片点击进入会话（无「打开」服务器磁盘）  
+5. **Settings** — API Key、模型、连接信息  
 
 页面本身尽量不滚动；主舞台为浮起白卡片，四周露出画布。
 

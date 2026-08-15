@@ -102,3 +102,14 @@
 - **GitLab CI：** `.gitlab-ci.yml` → `unit-test`（`npm ci && npm test`）
 - **GitHub Actions：** `.github/workflows/ci.yml`（master/main）
 - **线上：** https://coding-agent-harness.zeabur.app
+
+---
+
+## 2026-08-15 · 工作区导入与文件栏
+
+- **技能：** `test-driven-development`
+- **Task：** 公网站点从本机导入文件夹；编辑栏与文件树分离；写回本机
+- **原因：** 线上容器没有访问者的 `D:\`；旧「打开」浏览的是服务器磁盘
+- **产物：** `POST /api/workspace/import`、`PUT /api/workspace/file`、`webui/src/lib/local-fs.ts`；去掉「打开」；导入上限 5000 文件 / 50MB
+- **人工：** 要求多文件并列、对话仍在右侧、目录栏不被占用、同步回本地
+- **教训：** 浏览器写回本机必须走文件夹授权；刷新后授权丢失。WebUI `tsc` 同名变量会直接让 Zeabur 镜像构建失败
